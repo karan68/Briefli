@@ -551,6 +551,20 @@ const Sidebar: React.FC = () => {
     return searchResults.find(result => result.id === itemId);
   };
 
+  // Highlight the active search terms within a snippet.
+  const highlightSnippet = (text: string): React.ReactNode => {
+    const terms = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length || !text) return text;
+    const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+    const termSet = new Set(terms);
+    return text.split(re).map((part, i) =>
+      termSet.has(part.toLowerCase())
+        ? <mark key={i} className="bg-yellow-200 text-gray-900 rounded px-0.5">{part}</mark>
+        : part
+    );
+  };
+
   const renderItem = (item: SidebarItem, depth = 0) => {
     const isExpanded = expandedFolders.has(item.id);
     const paddingLeft = `${depth * 12 + 12}px`;
@@ -644,8 +658,11 @@ const Sidebar: React.FC = () => {
 
               {/* Show transcript match snippet if available */}
               {hasTranscriptMatch && (
-                <div className="mt-1 ml-8 text-xs text-gray-500 bg-yellow-50 p-1.5 rounded border border-yellow-100 line-clamp-2">
-                  <span className="font-medium text-yellow-600">Match:</span> {matchingResult.matchContext}
+                <div className="mt-1 ml-8 text-xs bg-yellow-50 p-1.5 rounded border border-yellow-100">
+                  <span className="font-medium text-yellow-600">Match</span>
+                  <span className="mt-0.5 block text-gray-600 leading-snug line-clamp-2 break-words">
+                    {highlightSnippet(matchingResult.matchContext)}
+                  </span>
                 </div>
               )}
             </div>
