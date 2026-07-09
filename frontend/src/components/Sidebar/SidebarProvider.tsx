@@ -23,6 +23,7 @@ export interface CurrentMeeting {
 interface TranscriptSearchResult {
   id: string;
   title: string;
+  segmentId: string;
   matchContext: string;
   timestamp: string;
 };

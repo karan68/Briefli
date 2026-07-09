@@ -41,6 +41,8 @@ pub struct SearchRequest {
 pub struct TranscriptSearchResult {
     pub id: String,
     pub title: String,
+    #[serde(rename = "segmentId")]
+    pub segment_id: String,
     #[serde(rename = "matchContext")]
     pub match_context: String,
     pub timestamp: String,

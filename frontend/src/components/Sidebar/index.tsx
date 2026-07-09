@@ -592,8 +592,13 @@ const Sidebar: React.FC = () => {
               toggleFolder(item.id);
             } else {
               setCurrentMeeting({ id: item.id, title: item.title });
+              // When opening a meeting from a search result, include the matched
+              // segment so the meeting view jumps straight to that moment.
+              const meetingDetailsPath = matchingResult?.segmentId
+                ? `/meeting-details?id=${item.id}&segment=${matchingResult.segmentId}`
+                : `/meeting-details?id=${item.id}`;
               const basePath = item.id.startsWith('intro-call') ? '/' :
-                item.id.includes('-') ? `/meeting-details?id=${item.id}` : `/notes/${item.id}`;
+                item.id.includes('-') ? meetingDetailsPath : `/notes/${item.id}`;
               router.push(basePath);
             }
           }}

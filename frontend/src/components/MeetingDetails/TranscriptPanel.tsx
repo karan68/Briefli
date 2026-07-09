@@ -13,6 +13,7 @@ import {
   type TimelineMarker,
 } from '@/lib/meeting-timeline';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 interface TranscriptPanelProps {
@@ -58,6 +59,11 @@ export function TranscriptPanel({
   meetingFolderPath,
   onRefetchTranscripts,
 }: TranscriptPanelProps) {
+  // Segment to jump to when arriving from a cross-meeting search result
+  // (e.g. /meeting-details?id=...&segment=...).
+  const searchParams = useSearchParams();
+  const targetSegmentId = searchParams.get('segment');
+
   // Convert transcripts to segments if pagination is not used but we want virtualization
   const convertedSegments = useMemo(() => {
     if (usePagination && segments) {
@@ -153,6 +159,35 @@ export function TranscriptPanel({
     const markerId = findActiveMarkerId(timelineMarkers, audio.currentTime);
     if (markerId) setActiveMarkerId(markerId);
   }, [audio.currentTime, audio.isPlaying, playableSegments, timelineMarkers]);
+
+  // Jump to a specific segment when arriving from a search result. Scrolls and
+  // highlights it once loaded, and positions the audio playhead at that moment
+  // once the recording is ready (seek clamps to duration, so it must wait).
+  const jumpedToSegmentRef = useRef<string | null>(null);
+  const seekedToSegmentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!targetSegmentId || isRecording) return;
+    const segment = convertedSegments.find((item) => item.id === targetSegmentId);
+    if (!segment) return;
+
+    // Scroll + highlight (once).
+    if (jumpedToSegmentRef.current !== targetSegmentId) {
+      jumpedToSegmentRef.current = targetSegmentId;
+      setActiveSegmentId(targetSegmentId);
+      transcriptViewRef.current?.scrollToSegment(targetSegmentId);
+    }
+
+    // Move the audio playhead to the segment once the recording has loaded.
+    if (
+      seekedToSegmentRef.current !== targetSegmentId &&
+      audioPath &&
+      audio.duration > 0 &&
+      typeof segment.timestamp === 'number'
+    ) {
+      seekedToSegmentRef.current = targetSegmentId;
+      audio.seek(segment.timestamp);
+    }
+  }, [targetSegmentId, convertedSegments, isRecording, audioPath, audio.duration]);
 
   const handleToggleTimeline = useCallback(() => {
     setIsTimelineOpen((open) => !open);

@@ -110,43 +110,81 @@ impl TranscriptsRepository {
             return Ok(Vec::new());
         }
 
-        // One row per meeting with all transcript segments concatenated in
-        // chronological order.
-        let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-            "SELECT m.id, m.title,
-                    GROUP_CONCAT(t.transcript, ' ') AS full_text,
-                    MIN(t.timestamp) AS ts
+        // All transcript segments with their meeting, ordered so segments of
+        // the same meeting are grouped and in chronological order.
+        let rows = sqlx::query_as::<_, (String, String, String, String, String)>(
+            "SELECT m.id, m.title, t.id, t.transcript, t.timestamp
              FROM meetings m
              JOIN transcripts t ON m.id = t.meeting_id
-             GROUP BY m.id, m.title",
+             ORDER BY m.id, t.timestamp",
         )
         .fetch_all(pool)
         .await?;
 
+        // Group segments by meeting, preserving first-seen order.
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: std::collections::HashMap<String, (String, Vec<(String, String, String)>)> =
+            std::collections::HashMap::new();
+        for (meeting_id, title, seg_id, text, ts) in rows {
+            let entry = groups.entry(meeting_id.clone()).or_insert_with(|| {
+                order.push(meeting_id.clone());
+                (title, Vec::new())
+            });
+            entry.1.push((seg_id, text, ts));
+        }
+
         let mut scored: Vec<(usize, TranscriptSearchResult)> = Vec::new();
 
-        for (id, title, full_text, timestamp) in rows {
-            let full_text = full_text.unwrap_or_default();
-            let text_lower = full_text.to_lowercase();
+        for meeting_id in order {
+            let (title, segments) = match groups.remove(&meeting_id) {
+                Some(value) => value,
+                None => continue,
+            };
 
-            // A meeting matches only if it contains ALL search terms.
-            if !terms.iter().all(|term| text_lower.contains(term.as_str())) {
+            // Whole-meeting text to require ALL terms and compute relevance.
+            let full_lower = segments
+                .iter()
+                .map(|(_, text, _)| text.to_lowercase())
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            if !terms.iter().all(|term| full_lower.contains(term.as_str())) {
                 continue;
             }
 
             // Relevance = total number of term occurrences across the meeting.
             let score: usize = terms
                 .iter()
-                .map(|term| text_lower.matches(term.as_str()).count())
+                .map(|term| full_lower.matches(term.as_str()).count())
                 .sum();
+
+            // Best segment = the one containing the most distinct terms (ties
+            // resolved by earliest), so the snippet and jump target point at the
+            // most relevant moment.
+            let mut best_index = 0usize;
+            let mut best_hits = 0usize;
+            for (i, (_, text, _)) in segments.iter().enumerate() {
+                let text_lower = text.to_lowercase();
+                let hits = terms
+                    .iter()
+                    .filter(|term| text_lower.contains(term.as_str()))
+                    .count();
+                if hits > best_hits {
+                    best_hits = hits;
+                    best_index = i;
+                }
+            }
+
+            let (segment_id, best_text, timestamp) = segments[best_index].clone();
 
             scored.push((
                 score,
                 TranscriptSearchResult {
-                    id,
+                    id: meeting_id,
                     title,
-                    match_context: Self::get_match_context(&full_text, &terms),
-                    timestamp: timestamp.unwrap_or_default(),
+                    segment_id,
+                    match_context: Self::get_match_context(&best_text, &terms),
+                    timestamp,
                 },
             ));
         }
