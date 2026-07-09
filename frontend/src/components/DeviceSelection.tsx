@@ -6,6 +6,7 @@ import { AudioLevelMeter, CompactAudioLevelMeter } from './AudioLevelMeter';
 import { AudioBackendSelector } from './AudioBackendSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { useConfig } from '@/contexts/ConfigContext';
 import Analytics from '@/lib/analytics';
 
 export interface AudioDevice {
@@ -45,6 +46,9 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   const [audioLevels, setAudioLevels] = useState<Map<string, AudioLevelData>>(new Map());
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
+
+  // In-person capture mode (microphone only, no system audio)
+  const { inPersonMode, toggleInPersonMode } = useConfig();
 
   // Filter devices by type
   const inputDevices = devices.filter(device => device.device_type === 'Input');
@@ -258,6 +262,23 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       )}
 
       <div className="space-y-3">
+        {/* In-person capture mode toggle */}
+        <label className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+          <input
+            type="checkbox"
+            checked={inPersonMode}
+            onChange={(e) => toggleInPersonMode(e.target.checked)}
+            disabled={disabled}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">In-person meeting</span>
+            <span className="block text-xs text-gray-500">
+              Record the microphone only — for face-to-face meetings. System audio won’t be captured.
+            </span>
+          </span>
+        </label>
+
         {/* Microphone Selection */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -327,18 +348,21 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
         </div>
 
         {/* System Audio Selection */}
-        <div className="space-y-2">
+        <div className={`space-y-2 ${inPersonMode ? 'opacity-50' : ''}`}>
           <div className="flex items-center gap-2">
             <Speaker className="h-4 w-4 text-gray-600" />
             <Label htmlFor="system-selection" className="text-sm font-medium text-gray-700">
               System Audio
             </Label>
+            {inPersonMode && (
+              <span className="text-xs text-gray-500">(off in in-person mode)</span>
+            )}
           </div>
 
           <Select
             value={selectedDevices.systemDevice || 'default'}
             onValueChange={handleSystemDeviceChange}
-            disabled={disabled}
+            disabled={disabled || inPersonMode}
           >
             <SelectTrigger id="system-selection" className="w-full">
               <SelectValue placeholder="Select System Audio" />

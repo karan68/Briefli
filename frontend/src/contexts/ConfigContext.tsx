@@ -55,6 +55,10 @@ interface ConfigContextType {
   selectedDevices: SelectedDevices;
   setSelectedDevices: (devices: SelectedDevices) => void;
 
+  // Capture mode (in-person = microphone only, no system audio)
+  inPersonMode: boolean;
+  toggleInPersonMode: (checked: boolean) => void;
+
   // Language preference
   selectedLanguage: string;
   setSelectedLanguage: (lang: string) => void;
@@ -159,6 +163,16 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('isAutoSummary');
       return saved !== null ? saved === 'true' : false
+    }
+    return false;
+  });
+
+  // Capture mode: in-person (microphone only) vs combined (mic + system audio).
+  // In-person mode records face-to-face meetings using only the microphone.
+  const [inPersonMode, setInPersonMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('inPersonMode');
+      return saved !== null ? saved === 'true' : false;
     }
     return false;
   });
@@ -389,6 +403,14 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Toggle in-person capture mode with localStorage persistence
+  const toggleInPersonMode = useCallback((checked: boolean) => {
+    setInPersonMode(checked);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('inPersonMode', checked.toString());
+    }
+  }, []);
+
   // Toggle beta feature with localStorage persistence and analytics
   const toggleBetaFeature = useCallback((featureKey: BetaFeatureKey, enabled: boolean) => {
     setBetaFeatures(prev => {
@@ -487,6 +509,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     setModelConfig,
     isAutoSummary,
     toggleIsAutoSummary,
+    inPersonMode,
+    toggleInPersonMode,
     providerApiKeys,
     updateProviderApiKey,
     transcriptModelConfig,
@@ -511,6 +535,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     modelConfig,
     isAutoSummary,
     toggleIsAutoSummary,
+    inPersonMode,
+    toggleInPersonMode,
     providerApiKeys,
     updateProviderApiKey,
     transcriptModelConfig,

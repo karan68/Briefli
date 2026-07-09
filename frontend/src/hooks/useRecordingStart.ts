@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranscripts } from '@/contexts/TranscriptContext';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -35,8 +35,16 @@ export function useRecordingStart(
 
   const { clearTranscripts, setMeetingTitle } = useTranscripts();
   const { setIsMeetingActive } = useSidebar();
-  const { selectedDevices } = useConfig();
+  const { selectedDevices, inPersonMode } = useConfig();
   const { setStatus } = useRecordingState();
+
+  // Keep the latest in-person mode in a ref so all start paths (button, sidebar
+  // auto, sidebar direct) read the current value without dependency churn.
+  // In-person mode records the microphone only (no system audio).
+  const inPersonModeRef = useRef(inPersonMode);
+  useEffect(() => {
+    inPersonModeRef.current = inPersonMode;
+  }, [inPersonMode]);
 
   // Generate meeting title with timestamp
   const generateMeetingTitle = useCallback(() => {
@@ -122,7 +130,7 @@ export function useRecordingStart(
       console.log('Starting backend recording with meeting:', randomTitle);
       await recordingService.startRecordingWithDevices(
         selectedDevices?.micDevice || null,
-        selectedDevices?.systemDevice || null,
+        inPersonModeRef.current ? null : (selectedDevices?.systemDevice || null),
         randomTitle
       );
       console.log('Backend recording started successfully');
@@ -191,7 +199,7 @@ export function useRecordingStart(
             console.log('Auto-starting backend recording with meeting:', generatedMeetingTitle);
             const result = await recordingService.startRecordingWithDevices(
               selectedDevices?.micDevice || null,
-              selectedDevices?.systemDevice || null,
+              inPersonModeRef.current ? null : (selectedDevices?.systemDevice || null),
               generatedMeetingTitle
             );
             console.log('Auto-start backend recording result:', result);
@@ -278,7 +286,7 @@ export function useRecordingStart(
         console.log('Starting backend recording with meeting:', generatedMeetingTitle);
         const result = await recordingService.startRecordingWithDevices(
           selectedDevices?.micDevice || null,
-          selectedDevices?.systemDevice || null,
+          inPersonModeRef.current ? null : (selectedDevices?.systemDevice || null),
           generatedMeetingTitle
         );
         console.log('Backend recording result:', result);
