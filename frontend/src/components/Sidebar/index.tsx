@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload } from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Settings, ChevronLeftCircle, ChevronRightCircle, Calendar, StickyNote, Home, Trash2, Mic, Square, Plus, Search, Pencil, NotebookPen, SearchIcon, X, Upload, ListChecks } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -751,6 +751,15 @@ const Sidebar: React.FC = () => {
               >
                 <Home className="w-4 h-4 mr-2" />
                 <span>Home</span>
+              </div>
+            )}
+            {!isCollapsed && (
+              <div
+                onClick={() => router.push('/commitments')}
+                className="p-3 text-lg font-semibold items-center hover:bg-gray-100 h-10 flex mx-3 mt-1 rounded-lg cursor-pointer"
+              >
+                <ListChecks className="w-4 h-4 mr-2" />
+                <span>Commitments</span>
               </div>
             )}
           </div>

@@ -264,6 +264,12 @@ async fn delete_meeting_with_transaction(
         .execute(&mut *transaction)
         .await?;
 
+    // 3b. Delete tracked commitments (no FK cascade: foreign_keys pragma is off)
+    sqlx::query("DELETE FROM commitments WHERE meeting_id = ?")
+        .bind(meeting_id)
+        .execute(&mut *transaction)
+        .await?;
+
     // 4. Finally, delete the meeting
     let result = sqlx::query("DELETE FROM meetings WHERE id = ?")
         .bind(meeting_id)

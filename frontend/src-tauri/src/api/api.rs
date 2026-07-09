@@ -8,8 +8,8 @@ use crate::{
     database::{
         models::MeetingModel,
         repositories::{
-            meeting::MeetingsRepository, setting::SettingsRepository,
-            transcript::TranscriptsRepository,
+            commitment::CommitmentsRepository, meeting::MeetingsRepository,
+            setting::SettingsRepository, transcript::TranscriptsRepository,
         },
     },
     state::AppState,
@@ -46,6 +46,21 @@ pub struct TranscriptSearchResult {
     #[serde(rename = "matchContext")]
     pub match_context: String,
     pub timestamp: String,
+}
+
+/// A tracked commitment / action item, aggregated across meetings.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitmentItem {
+    pub id: String,
+    #[serde(rename = "meetingId")]
+    pub meeting_id: String,
+    #[serde(rename = "meetingTitle")]
+    pub meeting_title: String,
+    pub text: String,
+    pub owner: Option<String>,
+    #[serde(rename = "dueDate")]
+    pub due_date: Option<String>,
+    pub status: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -382,6 +397,44 @@ pub async fn api_search_transcripts<R: Runtime>(
             Err(format!("Failed to search transcripts: {}", e))
         }
     }
+}
+
+#[tauri::command]
+pub async fn api_commitments_sync<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    _auth_token: Option<String>,
+) -> Result<u64, String> {
+    let pool = state.db_manager.pool();
+    CommitmentsRepository::sync_all(pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn api_commitments_list<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    _auth_token: Option<String>,
+) -> Result<Vec<CommitmentItem>, String> {
+    let pool = state.db_manager.pool();
+    CommitmentsRepository::list(pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn api_commitments_set_status<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    status: String,
+    _auth_token: Option<String>,
+) -> Result<(), String> {
+    let pool = state.db_manager.pool();
+    CommitmentsRepository::set_status(pool, &id, &status)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
