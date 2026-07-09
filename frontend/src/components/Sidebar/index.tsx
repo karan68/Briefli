@@ -560,7 +560,7 @@ const Sidebar: React.FC = () => {
     const termSet = new Set(terms);
     return text.split(re).map((part, i) =>
       termSet.has(part.toLowerCase())
-        ? <mark key={i} className="bg-yellow-200 text-gray-900 rounded px-0.5">{part}</mark>
+        ? <mark key={i} className="bg-yellow-200 text-gray-900 rounded-sm">{part}</mark>
         : part
     );
   };
