@@ -7,6 +7,7 @@ import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateCon
 import { recordingService } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
+import { ensureBestTranscriptionEngine } from '@/lib/fastTranscription';
 import { toast } from 'sonner';
 
 interface UseRecordingStartReturn {
@@ -49,14 +50,17 @@ export function useRecordingStart(
     return `Meeting ${day}_${month}_${year}_${hours}_${minutes}_${seconds}`;
   }, []);
 
-  // Check if Parakeet transcription model is ready
+  // Check if a transcription engine is ready and point the live config at it.
+  // Fast-path: accepts EITHER the tiny Whisper model (instant, ~31 MB) OR
+  // Parakeet (~670 MB), preferring Parakeet and auto-upgrading to it once its
+  // background download completes. Named "checkParakeetReady" for historical
+  // call sites; it now covers any supported local engine.
   const checkParakeetReady = useCallback(async (): Promise<boolean> => {
     try {
-      await invoke('parakeet_init');
-      const hasModels = await invoke<boolean>('parakeet_has_available_models');
-      return hasModels;
+      const engine = await ensureBestTranscriptionEngine();
+      return engine !== null;
     } catch (error) {
-      console.error('Failed to check Parakeet status:', error);
+      console.error('Failed to check transcription status:', error);
       return false;
     }
   }, []);

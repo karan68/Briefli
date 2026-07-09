@@ -8,6 +8,7 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSummaryModelSizeLabel, getSummaryModelSizeMb } from '@/lib/onboarding-summary-model';
+import { isAnyTranscriptionReady } from '@/lib/fastTranscription';
 
 const PARAKEET_MODEL = 'parakeet-tdt-0.6b-v3-int8';
 
@@ -54,6 +55,10 @@ export function DownloadProgressStep() {
   });
 
   const [isCompleting, setIsCompleting] = useState(false);
+  // Fast-path: true once ANY transcription engine is ready (the tiny Whisper
+  // model, ~31 MB, or Parakeet). Lets the user continue in seconds instead of
+  // waiting for the full ~670 MB Parakeet download.
+  const [fastTranscriptionReady, setFastTranscriptionReady] = useState(false);
   const parakeetDownloadStartedRef = useRef(false);
   const summaryDownloadStartedRef = useRef(false);
   const retryingRef = useRef(false);
@@ -162,6 +167,33 @@ export function DownloadProgressStep() {
     };
 
     checkPlatform();
+  }, []);
+
+  // Poll for fast-path readiness: unblock "Continue" as soon as the tiny
+  // Whisper model (or Parakeet) is downloaded, so the user isn't forced to wait
+  // for the full ~670 MB transcription engine.
+  useEffect(() => {
+    let cancelled = false;
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const check = async () => {
+      try {
+        const ready = await isAnyTranscriptionReady();
+        if (!cancelled && ready) {
+          setFastTranscriptionReady(true);
+          if (interval) clearInterval(interval);
+        }
+      } catch {
+        // ignore transient errors and keep polling
+      }
+    };
+
+    check();
+    interval = setInterval(check, 2000);
+    return () => {
+      cancelled = true;
+      if (interval) clearInterval(interval);
+    };
   }, []);
 
   // Start the required transcription model immediately; summary readiness must not block it.
@@ -474,7 +506,7 @@ export function DownloadProgressStep() {
   return (
     <OnboardingContainer
       title="Getting things ready"
-      description="You can start using Meetily after downloading the Transcription Engine."
+      description="You can start using Briefli after downloading the Transcription Engine."
       step={3}
       totalSteps={isMac ? 4 : 3}
     >
@@ -497,9 +529,9 @@ export function DownloadProgressStep() {
           )}
         </div>
 
-        {/* Info Message - Only show when Parakeet is downloaded */}
+        {/* Info Message - Show once any transcription engine is ready */}
         <AnimatePresence>
-          {parakeetDownloaded && !summaryModelDownloaded && (
+          {(parakeetDownloaded || fastTranscriptionReady) && !summaryModelDownloaded && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -524,10 +556,10 @@ export function DownloadProgressStep() {
         <div className="w-full max-w-xs">
           <Button
             onClick={handleContinue}
-            disabled={!parakeetDownloaded || isCompleting}
+            disabled={(!parakeetDownloaded && !fastTranscriptionReady) || isCompleting}
             className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {(isCompleting || !parakeetDownloaded) ? (
+            {(isCompleting || (!parakeetDownloaded && !fastTranscriptionReady)) ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               'Continue'

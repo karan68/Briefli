@@ -1,18 +1,18 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-    "productName": "meetily",
+    "productName": "Briefli",
     "version": "0.4.0",
-    "identifier": "com.meetily.ai",
+    "identifier": "com.briefli.app",
     "build": {
         "frontendDist": "../out",
         "devUrl": "http://localhost:3118",
-        "beforeDevCommand": "pnpm dev",
-        "beforeBuildCommand": "pnpm build"
+        "beforeDevCommand": "npm run dev",
+        "beforeBuildCommand": "npm run build"
     },
     "app": {
         "windows": [
             {
-                "title": "meetily",
+                "title": "Briefli",
                 "width": 1100,
                 "height": 700,
                 "resizable": true,

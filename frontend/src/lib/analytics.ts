@@ -42,16 +42,11 @@ export class Analytics {
   }
 
   private static async doInit(): Promise<void> {
-    try {
-      await invoke('init_analytics');
-      this.initialized = true;
-      console.log('Analytics initialized successfully');
-    } catch (error) {
-      console.error('Failed to initialize analytics:', error);
-      throw error;
-    } finally {
-      this.initializationPromise = null;
-    }
+    // Telemetry is permanently disabled for Briefli (privacy-first).
+    // We intentionally do NOT initialize the native analytics backend, so no
+    // PostHog client is ever created and no data leaves the device. Leaving
+    // `initialized` false means every track/identify/session call below no-ops.
+    this.initializationPromise = null;
   }
 
   static async disable(): Promise<void> {
@@ -182,10 +177,10 @@ export class Analytics {
     } catch (error) {
       console.error('Failed to get persistent user ID:', error);
       // Fallback to session storage
-      let userId = sessionStorage.getItem('meetily_user_id');
+      let userId = sessionStorage.getItem('briefli_user_id');
       if (!userId) {
         userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        sessionStorage.setItem('meetily_user_id', userId);
+        sessionStorage.setItem('briefli_user_id', userId);
         sessionStorage.setItem('is_first_launch', 'true');
       }
       return userId;

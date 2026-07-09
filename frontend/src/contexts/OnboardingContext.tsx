@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PermissionStatus, OnboardingPermissions } from '@/types/onboarding';
 import { resolveOnboardingSummaryModelStatus } from '@/lib/onboarding-summary-model';
+import { startFastWhisperDownload } from '@/lib/fastTranscription';
 
 const PARAKEET_MODEL = 'parakeet-tdt-0.6b-v3-int8';
 
@@ -533,6 +534,12 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         console.log('[OnboardingContext] Starting Parakeet download');
         invoke('parakeet_download_model', { modelName: PARAKEET_MODEL })
           .catch(err => console.error('[OnboardingContext] Parakeet download failed:', err));
+
+        // Fast-path: also fetch the tiny Whisper model (~31 MB) so the user can
+        // start recording within seconds while Parakeet (~670 MB) finishes in
+        // the background. The recording gate auto-upgrades to Parakeet later.
+        startFastWhisperDownload()
+          .catch(err => console.error('[OnboardingContext] Fast Whisper download failed:', err));
       }
 
       // Start selected Summary Model download immediately so completion cannot race the request.
