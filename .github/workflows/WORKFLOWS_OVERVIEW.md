@@ -2,9 +2,36 @@
 
 This document provides a quick overview of all available CI/CD workflows in this repository.
 
-**Note:** All workflows in this repository use **manual triggers only** (`workflow_dispatch`). There are no automatic triggers from push or pull request events.
+Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs automatically on every pull request.
 
 ## Workflow Files
+
+### 0. **pr-quality-gate.yml** - Required Pull Request Gate
+**Purpose:** Automatic merge protection for every pull request
+
+**Checks:**
+- Append-only migration policy, secret/local-artifact scan, and workflow linting
+- Frontend Bun tests and production Next.js build
+- Full non-ignored Rust library tests on Windows, Linux, and macOS
+- Fresh SQLite migration chain plus realistic demo-seed integration checks
+- Unsigned Windows desktop compile/build
+- Stable aggregate check: `ci / required`
+
+**Triggers:**
+- Every pull request
+- Manual dispatch for troubleshooting
+
+**Branch protection:**
+- Require `ci / required`
+- Require the branch to be up to date before merge
+- Require resolved review conversations
+
+**Limitations:**
+- CI cannot prove every microphone, speaker, GPU, permission, or real-world meeting condition.
+- The physical audio-output test is skipped on headless PR runners and remains part of manual device testing.
+- Signed/notarized installers remain covered by the manual build and release workflows because forked PRs do not receive signing secrets.
+
+---
 
 ### 1. **build-devtest.yml** - DevTest Builds
 **Purpose:** Fast builds for development and testing

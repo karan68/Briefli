@@ -1,0 +1,265 @@
+name: PR Quality Gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  policy:
+    name: ci / policy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate append-only migrations and public-safe files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node .github/scripts/pr-policy-check.mjs
+
+      - name: Test PR policy checker
+        run: node --test .github/scripts/pr-policy-check.test.mjs
+
+      - name: Validate workflow YAML
+        shell: bash
+        run: |
+          version="1.7.7"
+          curl -fsSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_x86_64.tar.gz"
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+
+  frontend:
+    name: ci / frontend
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend unit and property tests
+        run: bun test tests/lib
+
+      - name: Compile demo seed script
+        run: bun build ../scripts/seed-demo-meetings.ts --target=bun --outdir="${{ runner.temp }}/briefli-seed-check"
+
+      - name: Build production frontend
+        run: pnpm build
+
+  rust:
+    name: ci / rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libx11-dev \
+            libxtst-dev \
+            libxrandr-dev
+
+      - name: Install Rust stable with formatting and lint tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          key: pr-${{ matrix.os }}
+
+      - name: Check Rust formatting
+        if: runner.os == 'Linux'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA:-HEAD~1}"
+          mapfile -t changed_rust < <(git diff --name-only --diff-filter=ACMR "$base...HEAD" -- '*.rs')
+          if [ "${#changed_rust[@]}" -eq 0 ]; then
+            echo "No changed Rust files"
+            exit 0
+          fi
+          rustfmt --edition 2021 --check "${changed_rust[@]}"
+
+      - name: Run Clippy
+        if: runner.os == 'Linux'
+        run: cargo clippy -p meetily --lib --tests
+
+      - name: Run Rust library tests
+        run: cargo test -p meetily --lib --locked -- --skip audio::playback_monitor::tests::test_get_output_device
+
+  integration:
+    name: ci / integration
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.14'
+
+      - name: Install SQLite
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sqlite3
+
+      - name: Build a fresh database from every migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          db="$RUNNER_TEMP/briefli-integration.sqlite"
+          for migration in $(find frontend/src-tauri/migrations -maxdepth 1 -name '*.sql' | sort); do
+            echo "Applying $migration"
+            sqlite3 "$db" < "$migration"
+          done
+          sqlite3 "$db" "PRAGMA integrity_check;" | grep -Fx ok
+          echo "BRIEFLI_DB_PATH=$db" >> "$GITHUB_ENV"
+
+      - name: Seed realistic meetings twice
+        run: |
+          bun scripts/seed-demo-meetings.ts
+          bun scripts/seed-demo-meetings.ts
+
+      - name: Verify seeded integration cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(sqlite3 "$BRIEFLI_DB_PATH" "SELECT COUNT(*) FROM meetings WHERE id LIKE 'demo-%';")" = "14"
+          test "$(sqlite3 "$BRIEFLI_DB_PATH" "SELECT COUNT(*) FROM transcripts WHERE id LIKE 'demo-%';")" = "678"
+          test "$(sqlite3 "$BRIEFLI_DB_PATH" "SELECT COUNT(*) FROM meeting_memories WHERE id LIKE 'demo-%';")" = "28"
+          test "$(sqlite3 "$BRIEFLI_DB_PATH" "SELECT COUNT(*) FROM memory_spaces WHERE id LIKE 'demo-%';")" = "8"
+          test "$(sqlite3 "$BRIEFLI_DB_PATH" "SELECT COUNT(*) FROM meeting_memories mm JOIN transcripts t ON t.id = mm.source_transcript_id WHERE mm.id LIKE 'demo-%' AND mm.source_excerpt != t.transcript;")" = "0"
+          sqlite3 "$BRIEFLI_DB_PATH" "PRAGMA foreign_key_check;"
+
+  desktop-build:
+    name: ci / desktop (windows unsigned)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          key: pr-windows-desktop
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build unsigned Windows desktop app
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ''
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: pnpm tauri build --no-bundle
+
+  required:
+    name: ci / required
+    if: always()
+    needs: [policy, frontend, rust, integration, desktop-build]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every PR quality check
+        env:
+          POLICY: ${{ needs.policy.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          RUST: ${{ needs.rust.result }}
+          INTEGRATION: ${{ needs.integration.result }}
+          DESKTOP: ${{ needs.desktop-build.result }}
+        run: |
+          printf '%-14s %s\n' policy "$POLICY"
+          printf '%-14s %s\n' frontend "$FRONTEND"
+          printf '%-14s %s\n' rust "$RUST"
+          printf '%-14s %s\n' integration "$INTEGRATION"
+          printf '%-14s %s\n' desktop "$DESKTOP"
+          test "$POLICY" = success
+          test "$FRONTEND" = success
+          test "$RUST" = success
+          test "$INTEGRATION" = success
+          test "$DESKTOP" = success
