@@ -43,7 +43,7 @@ jobs:
       - name: Validate workflow YAML
         shell: bash
         run: |
-          version="1.7.7"
+          version="1.7.12"
           curl -fsSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_x86_64.tar.gz"
           tar -xzf actionlint.tar.gz actionlint
           ./actionlint -color
@@ -62,7 +62,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.15.9
           run_install: false
 
       - name: Setup Node
@@ -96,7 +96,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            sidecar-source: target/debug/llama-helper
+            sidecar-destination: frontend/src-tauri/binaries/llama-helper-x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            sidecar-source: target/debug/llama-helper.exe
+            sidecar-destination: frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            sidecar-source: target/debug/llama-helper
+            sidecar-destination: frontend/src-tauri/binaries/llama-helper-aarch64-apple-darwin
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,6 +140,14 @@ jobs:
         with:
           workspaces: '. -> target'
           key: pr-${{ matrix.os }}
+
+      - name: Build required llama-helper sidecar
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p llama-helper
+          mkdir -p frontend/src-tauri/binaries
+          cp '${{ matrix.sidecar-source }}' '${{ matrix.sidecar-destination }}'
 
       - name: Check Rust formatting
         if: runner.os == 'Linux'
@@ -208,7 +228,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.15.9
           run_install: false
 
       - name: Setup Node
@@ -230,6 +250,13 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+
+      - name: Build required llama-helper sidecar
+        shell: pwsh
+        run: |
+          cargo build --release -p llama-helper
+          New-Item -ItemType Directory -Force frontend/src-tauri/binaries | Out-Null
+          Copy-Item target/release/llama-helper.exe frontend/src-tauri/binaries/llama-helper-x86_64-pc-windows-msvc.exe
 
       - name: Build unsigned Windows desktop app
         working-directory: frontend
