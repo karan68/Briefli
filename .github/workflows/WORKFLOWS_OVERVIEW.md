@@ -12,7 +12,7 @@ Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs
 **Checks:**
 - Append-only migration policy, secret/local-artifact scan, and workflow linting
 - Frontend Bun tests and production Next.js build
-- Full non-ignored Rust library tests on Windows, Linux, and macOS
+- Rust library/test compilation on Windows and Linux, plus the full non-ignored Rust library suite on macOS
 - Fresh SQLite migration chain plus realistic demo-seed integration checks
 - Unsigned Windows desktop compile/build
 - Stable aggregate check: `ci / required`

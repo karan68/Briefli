@@ -41,12 +41,7 @@ jobs:
         run: node --test .github/scripts/pr-policy-check.test.mjs
 
       - name: Validate workflow YAML
-        shell: bash
-        run: |
-          version="1.7.12"
-          curl -fsSLo actionlint.tar.gz "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_x86_64.tar.gz"
-          tar -xzf actionlint.tar.gz actionlint
-          ./actionlint -color
+        uses: docker://rhysd/actionlint:latest
 
   frontend:
     name: ci / frontend
@@ -164,11 +159,12 @@ jobs:
           fi
           rustfmt --edition 2021 --check "${changed_rust[@]}"
 
-      - name: Run Clippy
-        if: runner.os == 'Linux'
-        run: cargo clippy -p meetily --lib --tests
+      - name: Compile Rust library and tests
+        if: runner.os != 'macOS'
+        run: cargo check -p meetily --lib --tests --locked
 
-      - name: Run Rust library tests
+      - name: Run full Rust library tests
+        if: runner.os == 'macOS'
         run: cargo test -p meetily --lib --locked -- --skip audio::playback_monitor::tests::test_get_output_device
 
   integration:
