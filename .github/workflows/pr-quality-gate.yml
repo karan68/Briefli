@@ -42,6 +42,8 @@ jobs:
 
       - name: Validate workflow YAML
         uses: docker://rhysd/actionlint:latest
+        with:
+          args: .github/workflows/pr-quality-gate.yml
 
   frontend:
     name: ci / frontend
