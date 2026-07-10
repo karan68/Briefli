@@ -99,6 +99,15 @@ const ACTION_PATTERNS: readonly RegExp[] = [
   /\bby (?:tomorrow|today|eod|end of day|monday|tuesday|wednesday|thursday|friday|next week)\b/i,
 ];
 
+/** Obvious negations that should not become green action markers. */
+const NEGATED_ACTION_PATTERNS: readonly RegExp[] = [
+  /\b(?:i|we|you|they)\s+(?:will|should)\s+(?:not|never)\b/i,
+  /\b(?:i|we|you|they)\s+(?:will|should)\s+(?:probably|maybe|definitely)\s+(?:not|never)\b/i,
+  /\b(?:i|we|you|they)\s+won['’]?t\b/i,
+  /\b(?:i|we|you|they)\s+(?:do\s+not|don['’]?t)\s+(?:think|believe)\b.*\b(?:will|should|need|have)\b/i,
+  /\blet['’]?s\s+not\b/i,
+];
+
 /**
  * Formats a duration in seconds as a timecode.
  *
@@ -163,7 +172,8 @@ export function classifySegment(text: string): 'action' | 'question' | null {
   if (normalized.length === 0) {
     return null;
   }
-  if (ACTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
+  const isNegated = NEGATED_ACTION_PATTERNS.some((pattern) => pattern.test(normalized));
+  if (!isNegated && ACTION_PATTERNS.some((pattern) => pattern.test(normalized))) {
     return 'action';
   }
   if (normalized.includes('?')) {
@@ -193,7 +203,18 @@ export function generateTimeline(
   segments: readonly TimelineSegment[],
   options: TimelineOptions = {},
 ): TimelineMarker[] {
-  const config = { ...DEFAULT_TIMELINE_OPTIONS, ...options };
+  const config: Required<TimelineOptions> = {
+    targetChapters: positiveInteger(options.targetChapters, DEFAULT_TIMELINE_OPTIONS.targetChapters),
+    pauseThresholdSeconds: nonNegativeFinite(
+      options.pauseThresholdSeconds,
+      DEFAULT_TIMELINE_OPTIONS.pauseThresholdSeconds,
+    ),
+    minMarkerSpacingSeconds: nonNegativeFinite(
+      options.minMarkerSpacingSeconds,
+      DEFAULT_TIMELINE_OPTIONS.minMarkerSpacingSeconds,
+    ),
+    maxMarkers: positiveInteger(options.maxMarkers, DEFAULT_TIMELINE_OPTIONS.maxMarkers),
+  };
 
   const valid = segments
     .map((segment, index) => ({ segment, index }))
@@ -222,6 +243,14 @@ export function generateTimeline(
 }
 
 type IndexedSegment = { segment: TimelineSegment; index: number };
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) ? Math.max(1, Math.floor(value as number)) : fallback;
+}
+
+function nonNegativeFinite(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) ? Math.max(0, value as number) : fallback;
+}
 
 /**
  * Builds the chapter backbone by bucketing the meeting duration into
@@ -281,6 +310,7 @@ function buildResumeMarkers(valid: IndexedSegment[], pauseThresholdSeconds: numb
     const previous = valid[i - 1].segment;
     const current = valid[i].segment;
     const previousEnd = Number.isFinite(previous.endTime as number)
+      && (previous.endTime as number) >= previous.startTime
       ? (previous.endTime as number)
       : previous.startTime;
     const gap = current.startTime - previousEnd;

@@ -6,9 +6,15 @@ use tauri_plugin_store::StoreExt;
 
 use crate::{
     database::{
-        models::MeetingModel,
+        models::{
+            ConversationBriefModel, LocalBriefMetricsModel, MeetingMemoryModel, MeetingModel,
+            MeetingSpaceAssignmentModel, MemoryOwnerAliasModel, MemorySpaceModel,
+        },
         repositories::{
+            brief_metrics::BriefMetricsRepository,
             commitment::CommitmentsRepository, meeting::MeetingsRepository,
+            memory::{MeetingMemoriesRepository, ReviewMemoryInput, ReviewStatus},
+            memory_space::MemorySpacesRepository,
             setting::SettingsRepository, transcript::TranscriptsRepository,
         },
     },
@@ -435,6 +441,227 @@ pub async fn api_commitments_set_status<R: Runtime>(
     CommitmentsRepository::set_status(pool, &id, &status)
         .await
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn api_memories_sync<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<u64, String> {
+    MeetingMemoriesRepository::sync_all(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to synchronize meeting memories: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memories_list<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<MeetingMemoryModel>, String> {
+    MeetingMemoriesRepository::list(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to list meeting memories: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_review<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    status: String,
+    text: String,
+    owner: Option<String>,
+    due_date: Option<String>,
+) -> Result<(), String> {
+    let status = ReviewStatus::parse(&status)
+        .filter(|status| *status != ReviewStatus::Suggested)
+        .ok_or_else(|| "Review status must be confirmed, corrected, or rejected".to_string())?;
+    MeetingMemoriesRepository::review(
+        state.db_manager.pool(),
+        &id,
+        ReviewMemoryInput {
+            status,
+            text: &text,
+            owner: owner.as_deref(),
+            due_date: due_date.as_deref(),
+        },
+    )
+    .await
+    .map_err(|error| format!("Failed to review meeting memory: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_set_resolution<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    status: String,
+) -> Result<(), String> {
+    MeetingMemoriesRepository::set_resolution(state.db_manager.pool(), &id, &status)
+        .await
+        .map_err(|error| format!("Failed to update meeting memory: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_mark_follow_up_reviewed<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    MeetingMemoriesRepository::mark_follow_up_reviewed(state.db_manager.pool(), &id)
+        .await
+        .map_err(|error| format!("Failed to mark follow-up reviewed: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_owner_aliases_list<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<MemoryOwnerAliasModel>, String> {
+    MeetingMemoriesRepository::list_owner_aliases(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to list learned owner aliases: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_owner_alias_delete<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    alias: String,
+) -> Result<(), String> {
+    MeetingMemoriesRepository::delete_owner_alias(state.db_manager.pool(), &alias)
+        .await
+        .map_err(|error| format!("Failed to forget learned owner alias: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_spaces_create<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    name: String,
+) -> Result<MemorySpaceModel, String> {
+    MemorySpacesRepository::create(state.db_manager.pool(), &name)
+        .await
+        .map_err(|error| format!("Failed to create memory space: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_spaces_list<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<MemorySpaceModel>, String> {
+    MemorySpacesRepository::list(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to list memory spaces: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_space_rename<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<MemorySpaceModel, String> {
+    MemorySpacesRepository::rename(state.db_manager.pool(), &id, &name)
+        .await
+        .map_err(|error| format!("Failed to rename memory space: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_space_delete<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    MemorySpacesRepository::delete(state.db_manager.pool(), &id)
+        .await
+        .map_err(|error| format!("Failed to delete memory space: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_space_assignments<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<MeetingSpaceAssignmentModel>, String> {
+    MemorySpacesRepository::assignments(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to list meeting assignments: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_space_assign<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    meeting_id: String,
+    space_id: Option<String>,
+) -> Result<(), String> {
+    MemorySpacesRepository::assign(
+        state.db_manager.pool(),
+        &meeting_id,
+        space_id.as_deref(),
+    )
+    .await
+    .map_err(|error| format!("Failed to assign meeting to memory space: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_memory_space_brief<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    space_id: String,
+) -> Result<ConversationBriefModel, String> {
+    MemorySpacesRepository::brief(state.db_manager.pool(), &space_id)
+        .await
+        .map_err(|error| format!("Failed to prepare conversation brief: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_brief_metrics_get<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<LocalBriefMetricsModel, String> {
+    BriefMetricsRepository::get(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to read local brief metrics: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_brief_metrics_set_enabled<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    BriefMetricsRepository::set_enabled(state.db_manager.pool(), enabled)
+        .await
+        .map_err(|error| format!("Failed to update local brief metrics: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_brief_metrics_record<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+    event_type: String,
+    space_id: String,
+    memory_id: Option<String>,
+) -> Result<bool, String> {
+    BriefMetricsRepository::record(
+        state.db_manager.pool(),
+        &event_type,
+        &space_id,
+        memory_id.as_deref(),
+    )
+    .await
+    .map_err(|error| format!("Failed to record local brief metric: {error}"))
+}
+
+#[tauri::command]
+pub async fn api_brief_metrics_clear<R: Runtime>(
+    _app: AppHandle<R>,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    BriefMetricsRepository::clear(state.db_manager.pool())
+        .await
+        .map_err(|error| format!("Failed to clear local brief metrics: {error}"))
 }
 
 #[tauri::command]

@@ -84,6 +84,42 @@ describe('classifySegment', () => {
     expect(classifySegment("Can you make sure it's done by tomorrow?")).toBe('action');
   });
 
+  test('covers every supported action phrase family case-insensitively', () => {
+    const examples = [
+      'ACTION ITEM: update the docs',
+      'Our to-do is to verify exports',
+      'Follow up with finance',
+      "We'll send the report",
+      'You will own the rollout',
+      'We need to test Windows',
+      'We have to notify support',
+      'We should document this',
+      "Let's review it",
+      'Assigned to Morgan',
+      'I can take care of that',
+      'Make sure the backup exists',
+      'The next step is validation',
+      'Finish it by EOD',
+      'Review this by next week',
+    ];
+    for (const example of examples) {
+      expect(classifySegment(example)).toBe('action');
+    }
+  });
+
+  test('does not mark obvious negated actions as commitments', () => {
+    expect(classifySegment('We should not ship this today')).toBeNull();
+    expect(classifySegment('We should probably not ship this today')).toBeNull();
+    expect(classifySegment('I will never send customer data')).toBeNull();
+    expect(classifySegment("We won't launch by Friday")).toBeNull();
+    expect(classifySegment("I don't think we should launch by Friday")).toBeNull();
+    expect(classifySegment("Let's not change the release date")).toBeNull();
+  });
+
+  test('preserves a question when its action phrase is negated', () => {
+    expect(classifySegment('Should we not ship this today?')).toBe('question');
+  });
+
   test('returns null for plain statements and empty text', () => {
     expect(classifySegment('The weather was nice today')).toBeNull();
     expect(classifySegment('   ')).toBeNull();
@@ -126,6 +162,16 @@ describe('generateTimeline', () => {
     expect(times).toEqual(sorted);
   });
 
+  test('sorts unsorted input while preserving original indexes', () => {
+    const markers = generateTimeline([
+      segment({ id: 'late', startTime: 90, text: 'Late discussion' }),
+      segment({ id: 'early', startTime: 0, text: 'Early discussion' }),
+      segment({ id: 'middle', startTime: 45, text: 'What is next?' }),
+    ], { minMarkerSpacingSeconds: 1 });
+    expect(markers.map((marker) => marker.time)).toEqual([...markers.map((marker) => marker.time)].sort((a, b) => a - b));
+    expect(markers.find((marker) => marker.segmentId === 'middle')?.segmentIndex).toBe(2);
+  });
+
   test('preserves the original segment index for scroll-to navigation', () => {
     const segments = [
       segment({ id: 's0', startTime: 0, text: 'Intro' }),
@@ -146,6 +192,30 @@ describe('generateTimeline', () => {
     ];
     const markers = generateTimeline(segments, { pauseThresholdSeconds: 20, minMarkerSpacingSeconds: 1 });
     expect(markers.some((m) => m.kind === 'resume' && m.segmentId === 'b')).toBe(true);
+  });
+
+  test('flags a resume at the exact threshold but not one millisecond below it', () => {
+    const exact = generateTimeline([
+      segment({ id: 'a', startTime: 0, endTime: 5, text: 'First' }),
+      segment({ id: 'b', startTime: 25, text: 'Second' }),
+    ], { pauseThresholdSeconds: 20, minMarkerSpacingSeconds: 1 });
+    expect(exact.some((marker) => marker.kind === 'resume')).toBe(true);
+
+    const below = generateTimeline([
+      segment({ id: 'a', startTime: 0, endTime: 5.001, text: 'First' }),
+      segment({ id: 'b', startTime: 25, text: 'Second' }),
+    ], { pauseThresholdSeconds: 20, minMarkerSpacingSeconds: 1 });
+    expect(below.some((marker) => marker.kind === 'resume')).toBe(false);
+  });
+
+  test('falls back to start time for invalid or backwards end times', () => {
+    for (const endTime of [Number.NaN, Number.POSITIVE_INFINITY, -10]) {
+      const markers = generateTimeline([
+        segment({ id: 'a', startTime: 5, endTime, text: 'First' }),
+        segment({ id: 'b', startTime: 30, text: 'Second' }),
+      ], { pauseThresholdSeconds: 20, minMarkerSpacingSeconds: 1 });
+      expect(markers.some((marker) => marker.kind === 'resume')).toBe(true);
+    }
   });
 
   test('does not flag a resume marker for short gaps', () => {
@@ -176,6 +246,57 @@ describe('generateTimeline', () => {
     expect(markers.length).toBeLessThanOrEqual(10);
   });
 
+  test('sanitizes zero, negative, fractional, NaN, and infinite options', () => {
+    const segments = [
+      segment({ id: 'a', startTime: 0, text: 'Opening' }),
+      segment({ id: 'b', startTime: 30, text: 'What changed?' }),
+      segment({ id: 'c', startTime: 60, text: "We'll follow up" }),
+    ];
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const markers = generateTimeline(segments, {
+        targetChapters: value,
+        pauseThresholdSeconds: value,
+        minMarkerSpacingSeconds: value,
+        maxMarkers: value,
+      });
+      expect(markers.length).toBeGreaterThan(0);
+      expect(markers.length).toBeLessThanOrEqual(24);
+    }
+    expect(generateTimeline(segments, { targetChapters: -5, maxMarkers: 0 })).toHaveLength(1);
+    expect(generateTimeline(segments, { targetChapters: 2.9, maxMarkers: 2.9 }).length).toBeLessThanOrEqual(2);
+  });
+
+  test('keeps higher-priority actions before questions and chapters when capped', () => {
+    const markers = generateTimeline([
+      segment({ id: 'chapter', startTime: 0, text: 'Introduction' }),
+      segment({ id: 'question', startTime: 30, text: 'What is the deadline?' }),
+      segment({ id: 'action', startTime: 60, text: 'I will send it tomorrow' }),
+    ], { maxMarkers: 1, minMarkerSpacingSeconds: 1 });
+    expect(markers).toHaveLength(1);
+    expect(markers[0].kind).toBe('action');
+  });
+
+  test('creates stable unique markers for duplicate timestamps', () => {
+    const markers = generateTimeline([
+      segment({ id: 'a', startTime: 10, text: 'What is option A?' }),
+      segment({ id: 'b', startTime: 10, text: 'I will test option B' }),
+    ], { minMarkerSpacingSeconds: 0, targetChapters: 1 });
+    expect(new Set(markers.map((marker) => marker.id)).size).toBe(markers.length);
+    expect(markers.every((marker) => marker.time === 10)).toBe(true);
+  });
+
+  test('produces UTF-8-safe labels for long multilingual text', () => {
+    const [marker] = generateTimeline([
+      segment({
+        id: 'unicode',
+        startTime: 0,
+        text: 'José asked whether café-mode should wait for the 日本語 accessibility review before release',
+      }),
+    ]);
+    expect(marker.label).toContain('José');
+    expect(marker.label).not.toContain('\uFFFD');
+  });
+
   test('every marker points at a real segment', () => {
     const segments = [
       segment({ id: 'a', startTime: 0, text: 'Kickoff' }),
@@ -198,6 +319,64 @@ describe('generateTimeline', () => {
     const markers = generateTimeline(segments);
     const uniqueIds = new Set(markers.map((m) => m.id));
     expect(uniqueIds.size).toBe(markers.length);
+  });
+
+  test('preserves invariants across deterministic malformed and extreme inputs', () => {
+    let state = 0x5eed1234;
+    const random = () => {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 0x1_0000_0000;
+    };
+    const specialNumbers = [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -100,
+      -0,
+      0,
+      0.001,
+      19.999,
+      20,
+      3600,
+      Number.MAX_SAFE_INTEGER,
+    ];
+    const texts = [
+      '',
+      '   ',
+      'Plain discussion',
+      'What happens next?',
+      'I will send this tomorrow',
+      "We won't ship by Friday",
+      'José asked about 日本語 support?',
+    ];
+
+    for (let run = 0; run < 200; run++) {
+      const segments = Array.from({ length: Math.floor(random() * 40) }, (_, index) => {
+        const startTime = specialNumbers[Math.floor(random() * specialNumbers.length)];
+        return segment({
+          id: `run-${run}-segment-${index}`,
+          startTime,
+          endTime: specialNumbers[Math.floor(random() * specialNumbers.length)],
+          text: texts[Math.floor(random() * texts.length)],
+        });
+      });
+      const maxMarkers = specialNumbers[Math.floor(random() * specialNumbers.length)];
+      const markers = generateTimeline(segments, {
+        targetChapters: specialNumbers[Math.floor(random() * specialNumbers.length)],
+        pauseThresholdSeconds: specialNumbers[Math.floor(random() * specialNumbers.length)],
+        minMarkerSpacingSeconds: specialNumbers[Math.floor(random() * specialNumbers.length)],
+        maxMarkers,
+      });
+
+      const expectedCap = Number.isFinite(maxMarkers) ? Math.max(1, Math.floor(maxMarkers)) : 24;
+      expect(markers.length).toBeLessThanOrEqual(expectedCap);
+      expect(markers.every((marker) => Number.isFinite(marker.time) && marker.time >= 0)).toBe(true);
+      expect(markers.map((marker) => marker.time)).toEqual(
+        [...markers.map((marker) => marker.time)].sort((a, b) => a - b),
+      );
+      expect(new Set(markers.map((marker) => marker.id)).size).toBe(markers.length);
+      expect(markers.every((marker) => segments[marker.segmentIndex]?.id === marker.segmentId)).toBe(true);
+    }
   });
 });
 

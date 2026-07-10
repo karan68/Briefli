@@ -9,14 +9,21 @@
     },
     {
       "title": "Key Decisions",
-      "instruction": "List the most important decisions made during the meeting.",
-      "format": "list"
+      "instruction": "List only explicit decisions. Include a short verbatim quote from the transcript as evidence. Omit uncertain decisions.",
+      "format": "list",
+      "item_format": "| **Decision** | **Evidence Quote** |\n| --- | --- |"
     },
     {
       "title": "Action Items",
-      "instruction": "List all assigned tasks with their owners and due date. Always add reference transcript segment and timestamp in the table.",
+      "instruction": "List only explicit commitments with owner and due date when stated. Include a short verbatim quote from the transcript as evidence. Do not infer an owner or deadline.",
       "format": "list",
-      "item_format": "| **Owner** | Task | Due | Reference Transcript Segment | Segment Time stamp |\n| --- | --- | --- | --- | --- |"
+      "item_format": "| **Owner** | **Task** | **Due** | **Evidence Quote** |\n| --- | --- | --- | --- |"
+    },
+    {
+      "title": "Open Questions",
+      "instruction": "List explicit questions or issues that remained unresolved. Include a short verbatim quote from the transcript as evidence.",
+      "format": "list",
+      "item_format": "| **Question** | **Evidence Quote** |\n| --- | --- |"
     },
     {
       "title": "Discussion Highlights",

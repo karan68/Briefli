@@ -66,6 +66,73 @@ pub struct TranscriptChunk {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingMemoryModel {
+    pub id: String,
+    pub meeting_id: String,
+    pub meeting_title: String,
+    pub kind: String,
+    pub text: String,
+    pub suggested_text: String,
+    pub owner: Option<String>,
+    pub due_date: Option<String>,
+    pub review_status: String,
+    pub resolution_status: String,
+    pub evidence_confidence: Option<f64>,
+    pub source_transcript_id: Option<String>,
+    pub source_excerpt: Option<String>,
+    pub source_timestamp: Option<String>,
+    pub source_audio_start_time: Option<f64>,
+    pub source_audio_end_time: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub reviewed_at: Option<String>,
+    pub follow_up_reviewed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemorySpaceModel {
+    pub id: String,
+    pub name: String,
+    pub meeting_count: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MeetingSpaceAssignmentModel {
+    pub meeting_id: String,
+    pub meeting_title: String,
+    pub space_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationBriefModel {
+    pub space: MemorySpaceModel,
+    pub decisions: Vec<MeetingMemoryModel>,
+    pub commitments: Vec<MeetingMemoryModel>,
+    pub open_questions: Vec<MeetingMemoryModel>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalBriefMetricsModel {
+    pub enabled: bool,
+    pub brief_open_count: i64,
+    pub source_open_count: i64,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryOwnerAliasModel {
+    pub alias: String,
+    pub canonical_name: String,
+}
+
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]
 pub struct Setting {
     pub id: String,

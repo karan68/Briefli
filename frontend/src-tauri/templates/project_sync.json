@@ -31,15 +31,21 @@
     },
     {
       "title": "Key Decisions",
-      "instruction": "Decisions made in this meeting with rationale and timestamp",
+      "instruction": "Explicit decisions made in this meeting with rationale and a short verbatim evidence quote",
       "format": "list",
-      "item_format": "| **Decision** | **Rationale** | **Timestamp** |\n| --- | --- | --- |"
+      "item_format": "| **Decision** | **Rationale** | **Evidence Quote** |\n| --- | --- | --- |"
     },
     {
       "title": "Action Items",
-      "instruction": "Tasks with owners, due dates, priority, and status",
+      "instruction": "Explicit tasks with owners, due dates, priority, and a short verbatim evidence quote. Do not infer missing owners or deadlines.",
       "format": "list",
-      "item_format": "| **Owner** | **Task** | **Due Date** | **Priority** | **Status** |\n| --- | --- | --- | --- | --- |"
+      "item_format": "| **Owner** | **Task** | **Due Date** | **Priority** | **Evidence Quote** |\n| --- | --- | --- | --- | --- |"
+    },
+    {
+      "title": "Open Questions",
+      "instruction": "Explicit questions or issues left unresolved, with a short verbatim evidence quote",
+      "format": "list",
+      "item_format": "| **Question** | **Evidence Quote** |\n| --- | --- |"
     },
     {
       "title": "Related Documents",

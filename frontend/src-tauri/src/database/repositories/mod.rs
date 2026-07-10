@@ -1,5 +1,8 @@
 pub mod commitment;
 pub mod meeting;
+pub mod memory;
+pub mod brief_metrics;
+pub mod memory_space;
 pub mod setting;
 pub mod summary;
 pub mod transcript;
