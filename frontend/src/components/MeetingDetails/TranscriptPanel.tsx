@@ -199,9 +199,13 @@ export function TranscriptPanel({
   const showAudioPlayer = !isRecording && audioPath !== null && !audio.error;
 
   return (
-    <div className="hidden md:flex md:w-1/4 lg:w-1/3 min-w-0 border-r border-gray-200 bg-white flex-col relative shrink-0">
+    <div className="relative hidden min-w-0 shrink-0 flex-col border-r border-briefli-line bg-briefli-surface md:flex md:w-[38%] lg:w-[40%] lg:max-w-[470px]">
       {/* Title area */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="flex items-center justify-between gap-3 border-b border-briefli-line px-4 py-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">Source evidence</p>
+          <h2 className="mt-1 text-sm font-semibold text-briefli-ink">Transcript</h2>
+        </div>
         <TranscriptButtonGroup
           transcriptCount={usePagination ? (totalCount ?? convertedSegments.length) : (transcripts?.length || 0)}
           onCopyTranscript={onCopyTranscript}
@@ -214,7 +218,7 @@ export function TranscriptPanel({
 
       {/* Recorded audio transport (play / seek), when a recording exists */}
       {showAudioPlayer && (
-        <div className="border-b border-gray-200">
+        <div className="border-b border-briefli-line">
           <MeetingAudioPlayer
             isPlaying={audio.isPlaying}
             currentTime={audio.currentTime}
@@ -236,7 +240,7 @@ export function TranscriptPanel({
           collapsible
           isOpen={isTimelineOpen}
           onToggleOpen={handleToggleTimeline}
-          className="max-h-[38vh] border-b border-gray-200"
+          className="max-h-[34vh] border-b border-briefli-line"
         />
       )}
 
@@ -263,10 +267,10 @@ export function TranscriptPanel({
 
       {/* Custom prompt input at bottom of transcript section */}
       {!isRecording && convertedSegments.length > 0 && (
-        <div className="p-1 border-t border-gray-200">
+        <div className="border-t border-briefli-line p-3">
           <textarea
-            placeholder="Add context for AI summary. For example people involved, meeting overview, objective etc..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm min-h-[80px] resize-y"
+            placeholder="Add names or context before generating the record"
+            className="min-h-[72px] w-full resize-y rounded border border-briefli-line bg-briefli-paper px-3 py-2 text-sm text-briefli-ink placeholder:text-briefli-muted focus:border-briefli-ink focus:outline-none"
             value={customPrompt}
             onChange={(e) => onPromptChange(e.target.value)}
           />

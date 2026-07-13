@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { RecordingControls } from '@/components/RecordingControls';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
@@ -21,6 +21,162 @@ import { TranscriptRecovery } from '@/components/TranscriptRecovery';
 import { indexedDBService } from '@/services/indexedDBService';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { LockKeyhole } from 'lucide-react';
+
+// Builds a horizontal sine path across `width` user units; periodic so a -50% shift loops seamlessly.
+function sineWavePath(midY: number, amplitude: number, wavelength: number, width = 2000, step = 10) {
+  const points: string[] = [];
+  for (let x = 0; x <= width; x += step) {
+    const y = (midY + amplitude * Math.sin((x / wavelength) * Math.PI * 2)).toFixed(1);
+    points.push(`${x === 0 ? 'M' : 'L'} ${x} ${y}`);
+  }
+  return points.join(' ');
+}
+
+// Layered flowing "sound" lines for the idle backdrop (audio/conversation motif).
+const WAVE_LINES = [
+  { d: sineWavePath(110, 24, 500), colorClass: 'text-briefli-capture', opacity: 0.11, duration: 30, reverse: false },
+  { d: sineWavePath(230, 40, 500), colorClass: 'text-briefli-confirmed', opacity: 0.13, duration: 24, reverse: true },
+  { d: sineWavePath(350, 30, 500), colorClass: 'text-briefli-caution', opacity: 0.11, duration: 36, reverse: false },
+  { d: sineWavePath(460, 44, 500), colorClass: 'text-briefli-capture', opacity: 0.10, duration: 28, reverse: true },
+  { d: sineWavePath(555, 22, 500), colorClass: 'text-briefli-confirmed', opacity: 0.11, duration: 40, reverse: false },
+];
+
+// Full-screen animated backdrop: drifting warm glows + slow flowing sound-wave lines.
+function HeroBackdrop() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <motion.div
+        className="absolute h-[560px] w-[560px] rounded-full bg-briefli-capture opacity-[0.10] blur-[140px]"
+        style={{ left: '16%', top: '22%' }}
+        animate={{ x: [-40, 50, -40], y: [-30, 40, -30] }}
+        transition={{ duration: 26, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute h-[480px] w-[480px] rounded-full bg-briefli-confirmed opacity-[0.08] blur-[150px]"
+        style={{ right: '14%', bottom: '16%' }}
+        animate={{ x: [30, -40, 30], y: [20, -30, 20] }}
+        transition={{ duration: 34, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <motion.div
+        className="absolute h-[380px] w-[380px] rounded-full bg-briefli-caution opacity-[0.06] blur-[150px]"
+        style={{ left: '54%', top: '56%' }}
+        animate={{ x: [0, -40, 20, 0], y: [0, 25, -20, 0] }}
+        transition={{ duration: 30, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {WAVE_LINES.map((line, i) => (
+        <motion.svg
+          key={i}
+          className="absolute inset-0 h-full w-[200%]"
+          viewBox="0 0 2000 600"
+          preserveAspectRatio="none"
+          fill="none"
+          animate={{ x: line.reverse ? ['-50%', '0%'] : ['0%', '-50%'] }}
+          transition={{ duration: line.duration, repeat: Infinity, ease: 'linear' }}
+        >
+          <path
+            d={line.d}
+            stroke="currentColor"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+            className={line.colorClass}
+            style={{ strokeOpacity: line.opacity }}
+          />
+        </motion.svg>
+      ))}
+    </div>
+  );
+}
+
+// Voice-reactive waveform for the recording state: bar heights follow live mic loudness.
+// Falls back to a gentle idle motion if the webview can't open a mic stream.
+function VoiceWaveform({ active }: { active: boolean }) {
+  const barRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const BAR_COUNT = 48;
+
+  useEffect(() => {
+    const bars = barRefs.current;
+    const setBar = (i: number, scale: number) => {
+      const el = bars[i];
+      if (el) el.style.transform = `scaleY(${scale.toFixed(3)})`;
+    };
+
+    if (!active) {
+      for (let i = 0; i < BAR_COUNT; i++) setBar(i, 0.28);
+      return;
+    }
+
+    let raf = 0;
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let audioCtx: AudioContext | null = null;
+
+    const runIdle = () => {
+      const start = performance.now();
+      const tick = () => {
+        if (cancelled) return;
+        const t = (performance.now() - start) / 1000;
+        for (let i = 0; i < BAR_COUNT; i++) {
+          setBar(i, 0.25 + 0.2 * (Math.sin(t * 2.2 + i * 0.5) * 0.5 + 0.5));
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    const runReactive = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('no getUserMedia');
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        audioCtx = new AudioContext();
+        await audioCtx.resume().catch(() => {});
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 128;
+        analyser.smoothingTimeConstant = 0.82;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const usable = Math.max(1, Math.floor(analyser.frequencyBinCount * 0.66));
+        const tick = () => {
+          if (cancelled) return;
+          analyser.getByteFrequencyData(data);
+          for (let i = 0; i < BAR_COUNT; i++) {
+            const bin = Math.floor((i / BAR_COUNT) * usable);
+            const v = data[bin] / 255;
+            setBar(i, 0.12 + Math.pow(v, 0.8) * 1.7);
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch {
+        runIdle();
+      }
+    };
+
+    runReactive();
+
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      audioCtx?.close().catch(() => {});
+    };
+  }, [active]);
+
+  return (
+    <div aria-hidden className="flex h-24 items-center justify-center gap-[3px]">
+      {Array.from({ length: BAR_COUNT }).map((_, i) => (
+        <span
+          key={i}
+          ref={(el) => { barRefs.current[i] = el; }}
+          className="w-[4px] rounded-full bg-briefli-capture"
+          style={{ height: 40, transformOrigin: 'center', transform: 'scaleY(0.12)', transition: 'transform 80ms linear' }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function Home() {
   // Local page state (not moved to contexts)
@@ -29,7 +185,7 @@ export default function Home() {
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
 
   // Use contexts for state management
-  const { meetingTitle } = useTranscripts();
+  const { meetingTitle, transcripts } = useTranscripts();
   const { transcriptModelConfig, selectedDevices } = useConfig();
   const recordingState = useRecordingState();
 
@@ -188,13 +344,38 @@ export default function Home() {
 
   // Computed values using global status
   const isProcessingStop = status === RecordingStatus.PROCESSING_TRANSCRIPTS || isProcessing;
+  const isIdleEntry =
+    transcripts.length === 0 &&
+    !recordingState.isRecording &&
+    !isProcessingStop &&
+    status !== RecordingStatus.SAVING;
+  const isRecordingEmpty = recordingState.isRecording && transcripts.length === 0;
+
+  // Single record-control instance: shown inline in the idle hero, or as the bottom bar while active
+  const recordingCta = (
+    <RecordingControls
+      isRecording={recordingState.isRecording}
+      onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
+      onRecordingStart={handleRecordingStart}
+      onTranscriptReceived={() => { }} // Not actually used by RecordingControls
+      onStopInitiated={() => setIsStopping(true)}
+      barHeights={barHeights}
+      onTranscriptionError={(message) => {
+        showModal('errorAlert', message);
+      }}
+      isRecordingDisabled={isRecordingDisabled}
+      isParentProcessing={isProcessingStop}
+      selectedDevices={selectedDevices}
+      meetingName={meetingTitle}
+    />
+  );
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
-      className="flex flex-col h-screen bg-gray-50"
+      className="flex h-screen flex-col bg-briefli-paper"
     >
       {/* All Modals supported*/}
       <SettingsModals
@@ -212,41 +393,87 @@ export default function Home() {
         onDelete={deleteRecoverableMeeting}
         onLoadPreview={loadMeetingTranscripts}
       />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 overflow-hidden">
         <TranscriptPanel
           isProcessingStop={isProcessingStop}
           isStopping={isStopping}
           showModal={showModal}
         />
 
-        {/* Recording controls - only show when permissions are granted or already recording and not showing status messages */}
-        {(hasMicrophone || isRecording) &&
+        {/* Idle entry hero - large and centered in the visible content area */}
+        {isIdleEntry && (
+          <div
+            className="pointer-events-none absolute inset-0 z-[5] flex flex-col items-center justify-center px-6 text-center transition-[padding] duration-300"
+            style={{ paddingLeft: sidebarCollapsed ? '72px' : '240px' }}
+          >
+            <HeroBackdrop />
+
+            <div
+              className="pointer-events-none absolute top-4 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-briefli-confirmed"
+              style={{ left: sidebarCollapsed ? '96px' : '264px' }}
+            >
+              <LockKeyhole className="h-3.5 w-3.5" />
+              Stored on this device
+            </div>
+
+            <div className="pointer-events-auto relative z-10 flex w-full max-w-2xl flex-col items-center">
+              <h1 className="font-brand text-[clamp(44px,5.2vw,68px)] font-semibold leading-[1.05] text-briefli-ink">
+                Ready when you are
+              </h1>
+              <p className="mt-5 max-w-lg text-lg leading-8 text-briefli-muted">
+                Start recording and Briefli keeps track of the decisions, promises, and open questions as they happen.
+              </p>
+              <div className="mt-10">
+                {recordingCta}
+              </div>
+              <p className="mt-6 text-sm text-briefli-muted">
+                Works for online calls and in-person conversations
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Recording state - big and centered, with a voice-reactive waveform */}
+        {isRecordingEmpty && (
+          <div
+            className="pointer-events-none absolute inset-0 z-[5] flex flex-col items-center justify-center px-6 text-center transition-[padding] duration-300"
+            style={{ paddingLeft: sidebarCollapsed ? '72px' : '240px' }}
+          >
+            <HeroBackdrop />
+
+            <div className="pointer-events-auto relative z-10 flex w-full max-w-2xl flex-col items-center">
+              <VoiceWaveform active={recordingState.isRecording && !recordingState.isPaused} />
+              <h1 className="mt-8 font-brand text-[clamp(40px,4.8vw,60px)] font-semibold leading-[1.05] text-briefli-ink">
+                {recordingState.isPaused ? 'Paused' : 'Listening\u2026'}
+              </h1>
+              <p className="mt-4 max-w-md text-lg leading-8 text-briefli-muted">
+                {recordingState.isPaused
+                  ? 'Resume when you\u2019re ready.'
+                  : 'Speak \u2014 Briefli is capturing every word.'}
+              </p>
+              <div className="mt-10">
+                {recordingCta}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recording controls - bottom bar after transcript content appears */}
+        {!isIdleEntry &&
+          !isRecordingEmpty &&
+          (hasMicrophone || isRecording) &&
           status !== RecordingStatus.PROCESSING_TRANSCRIPTS &&
           status !== RecordingStatus.SAVING && (
-            <div className="fixed bottom-12 left-0 right-0 z-10">
+            <div className="fixed bottom-8 left-0 right-0 z-10">
               <div
-                className="flex justify-center pl-8 transition-[margin] duration-300"
+                className="flex justify-center transition-[margin] duration-300"
                 style={{
-                  marginLeft: sidebarCollapsed ? '4rem' : '16rem'
+                  marginLeft: sidebarCollapsed ? '72px' : '15rem'
                 }}
               >
-                <div className="w-2/3 max-w-[750px] flex justify-center">
-                  <div className="bg-white rounded-full shadow-lg flex items-center">
-                    <RecordingControls
-                      isRecording={recordingState.isRecording}
-                      onRecordingStop={(callApi = true) => handleRecordingStop(callApi)}
-                      onRecordingStart={handleRecordingStart}
-                      onTranscriptReceived={() => { }} // Not actually used by RecordingControls
-                      onStopInitiated={() => setIsStopping(true)}
-                      barHeights={barHeights}
-                      onTranscriptionError={(message) => {
-                        showModal('errorAlert', message);
-                      }}
-                      isRecordingDisabled={isRecordingDisabled}
-                      isParentProcessing={isProcessingStop}
-                      selectedDevices={selectedDevices}
-                      meetingName={meetingTitle}
-                    />
+                <div className="flex w-full max-w-[760px] justify-start px-4">
+                  <div className="flex items-center">
+                    {recordingCta}
                   </div>
                 </div>
               </div>

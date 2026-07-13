@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
+import { ArrowRight, FileAudio, Info, MessageSquareText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
@@ -30,12 +30,16 @@ export function SetupOverviewStep() {
     {
       number: 1,
       type: 'transcription',
-      title: 'Download Transcription Engine',
+      title: 'Private transcription',
+      description: 'Turns speech into a searchable transcript on this device.',
+      icon: FileAudio,
     },
     {
       number: 2,
       type: 'summarization',
-      title: 'Download Summarization Engine',
+      title: 'Meeting memory',
+      description: 'Suggests decisions, commitments, and open questions for your review.',
+      icon: MessageSquareText,
     },
   ];
 
@@ -45,24 +49,27 @@ export function SetupOverviewStep() {
 
   return (
     <OnboardingContainer
-      title="Setup Overview"
-      description="Briefli requires that you download the Transcription & Summarization AI models for the software to work."
+      title="Prepare your local workspace"
+      description="Briefli downloads two local capabilities. You can change models or connect an external provider later in Settings."
       step={2}
       totalSteps={isMac ? 4 : 3}
     >
-      <div className="flex flex-col items-center space-y-10">
+      <div className="space-y-8">
         {/* Steps Card */}
-        <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 p-4">
-          <div className="space-y-4">
+        <div className="border-y border-briefli-line">
+          <div>
             {steps.map((step, idx) => {
+              const Icon = step.icon;
               return (
                 <div
                   key={step.number}
-                  className={`flex items-start gap-4 p-1`}
+                  className="grid grid-cols-[44px_1fr_auto] items-start gap-4 border-b border-briefli-line py-5 last:border-b-0"
                 >
-                  <div className="flex-1 ml-1">
-                    <h3 className="font-medium text-gray-900 flex items-center gap-2">
-                        Step {step.number} :  {step.title}
+                  <div className="flex h-10 w-10 items-center justify-center rounded bg-[#202621] text-white"><Icon className="h-5 w-5" /></div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">Step {step.number}</p>
+                    <h3 className="mt-1 flex items-center gap-2 font-semibold text-briefli-ink">
+                        {step.title}
 
                         {step.type === "summarization" && (
                             <TooltipProvider>
@@ -80,7 +87,9 @@ export function SetupOverviewStep() {
                             </TooltipProvider>
                         )}
                         </h3>
+                        <p className="mt-1 text-sm leading-6 text-briefli-muted">{step.description}</p>
                   </div>
+                      <span className="pt-2 text-xs text-briefli-muted">Local</span>
                 </div>
               );
             })}
@@ -89,23 +98,14 @@ export function SetupOverviewStep() {
 
 
         {/* CTA Section */}
-        <div className="w-full max-w-xs space-y-4">
+        <div>
           <Button
             onClick={handleContinue}
-            className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
+            className="h-11 rounded bg-[#202621] px-5 text-white hover:bg-black"
           >
-            Let's Go
+            Download and continue <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
-          <div className="text-center">
-            <a
-              href="https://github.com/Zackriya-Solutions/meeting-minutes"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-gray-600 hover:underline"
-            >
-              Report issues on GitHub
-            </a>
-          </div>
+          <p className="mt-3 text-left text-xs text-briefli-muted">Downloads are stored in Briefli&apos;s application data folder.</p>
         </div>
       </div>
     </OnboardingContainer>

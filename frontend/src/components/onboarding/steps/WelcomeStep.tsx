@@ -1,5 +1,6 @@
 import React from 'react';
-import { Lock, Sparkles, Cpu } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowRight, Link2, LockKeyhole, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { OnboardingContainer } from '../OnboardingContainer';
 import { useOnboarding } from '@/contexts/OnboardingContext';
@@ -9,56 +10,58 @@ export function WelcomeStep() {
 
   const features = [
     {
-      icon: Lock,
-      title: 'Your data never leaves your device',
+      icon: LockKeyhole,
+      title: 'Private by architecture',
+      description: 'Meetings, transcripts, and durable memory stay on this device.',
     },
     {
-      icon: Sparkles,
-      title: 'Intelligent summaries & insights',
+      icon: Link2,
+      title: 'Every memory keeps its source',
+      description: 'Jump from a decision or promise back to where it was said.',
     },
     {
-      icon: Cpu,
-      title: 'Works offline, no cloud required',
+      icon: RotateCcw,
+      title: 'Built for the next conversation',
+      description: 'Bring confirmed decisions and open loops back before you meet again.',
     },
   ];
 
   return (
     <OnboardingContainer
-      title="Welcome to Briefli"
-      description="Record. Transcribe. Summarize. All on your device."
+      title="Let's start Briefli"
+      description="Set up your private record of what was decided, promised, and left unresolved."
       step={1}
       hideProgress={true}
     >
-      <div className="flex flex-col items-center space-y-10">
-        {/* Divider */}
-        <div className="w-16 h-px bg-gray-300" />
-
-        {/* Features Card */}
-        <div className="w-full max-w-md bg-white rounded-lg border border-gray-200 shadow-sm p-6 space-y-4">
+      <div className="grid gap-10 md:grid-cols-[1fr_240px]">
+        <div className="space-y-1 border-t border-briefli-line pt-3">
           {features.map((feature, index) => {
             const Icon = feature.icon;
             return (
-              <div key={index} className="flex items-start gap-3">
-                <div className="flex-shrink-0 mt-0.5">
-                  <div className="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center">
-                    <Icon className="w-3 h-3 text-gray-700" />
-                  </div>
+              <div key={index} className="flex items-start gap-4 border-b border-briefli-line py-5">
+                <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-[#202621] text-white">
+                  <Icon className="h-4 w-4" />
                 </div>
-                <p className="text-sm text-gray-700 leading-relaxed">{feature.title}</p>
+                <div>
+                  <p className="text-sm font-semibold text-briefli-ink">{feature.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-briefli-muted">{feature.description}</p>
+                </div>
               </div>
             );
           })}
-        </div>
-
-        {/* CTA Section */}
-        <div className="w-full max-w-xs space-y-3">
           <Button
             onClick={goNext}
-            className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
+            className="mt-7 h-11 rounded bg-[#202621] px-5 text-white hover:bg-black"
           >
-            Get Started
+            Set up Briefli <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
-          <p className="text-xs text-center text-gray-500">Takes less than 3 minutes</p>
+        </div>
+        <div className="flex min-h-72 flex-col justify-between rounded border border-briefli-line bg-briefli-sidebar p-6">
+          <Image src="/briefli-mark.svg" alt="" width={56} height={56} />
+          <p className="font-brand text-xl leading-8 text-briefli-ink">
+            “Before my next conversation, remind me what we agreed.”
+          </p>
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-briefli-muted">Setup takes a few minutes</p>
         </div>
       </div>
     </OnboardingContainer>

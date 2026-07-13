@@ -477,7 +477,7 @@ export function BuiltInModelManager({
                   </div>
                   <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-gray-800 to-gray-900 rounded-full transition-all duration-300"
+                      className="h-full rounded-full bg-[#202621] transition-all duration-300"
                       style={{ width: `${progress}%` }}
                     />
                   </div>

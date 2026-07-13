@@ -190,36 +190,37 @@ export default function MemoryPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 pr-8">
-      <div className="mx-auto max-w-4xl">
-        <header className="mb-6 flex items-start justify-between gap-4">
+    <main className="h-screen overflow-y-auto bg-briefli-paper px-8 py-7 custom-scrollbar">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-7 flex items-end justify-between gap-4 border-b border-briefli-line pb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Meeting memory</h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500">
-              Confirm what matters before Briefli treats it as part of your record.
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-briefli-confirmed">Evidence ledger</p>
+            <h1 className="font-brand text-3xl font-semibold text-briefli-ink">Memory</h1>
+            <p className="mt-2 max-w-2xl text-sm text-briefli-muted">
+              Review suggestions before they become part of your trusted record.
             </p>
           </div>
           <button
             onClick={sync}
             disabled={syncing}
-            className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded border border-briefli-line bg-briefli-surface px-3 py-2 text-sm text-briefli-muted hover:text-briefli-ink disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </header>
 
-        <div className="mb-5 inline-flex rounded-md border border-gray-200 bg-white p-1" role="tablist">
+        <div className="mb-5 inline-flex border-b border-briefli-line" role="tablist">
           {(Object.keys(VIEW_LABELS) as MemoryView[]).map((candidate) => (
             <button
               key={candidate}
               role="tab"
               aria-selected={view === candidate}
               onClick={() => setView(candidate)}
-              className={`rounded px-3 py-1.5 text-sm ${
+              className={`border-b-2 px-4 py-2 text-sm ${
                 view === candidate
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  ? 'border-briefli-capture font-semibold text-briefli-ink'
+                  : 'border-transparent text-briefli-muted hover:text-briefli-ink'
               }`}
             >
               {VIEW_LABELS[candidate]} <span className="ml-1 opacity-70">{counts[candidate]}</span>
@@ -240,17 +241,17 @@ export default function MemoryPage() {
         ) : visibleItems.length === 0 ? (
           <EmptyView view={view} />
         ) : (
-          <div className="space-y-3">
+          <div className="overflow-hidden rounded border border-briefli-line bg-briefli-surface">
             {visibleItems.map((item) => {
               const isEditing = editingId === item.id;
               const isBusy = busyId === item.id;
               return (
-                <article key={item.id} className="rounded-lg border border-gray-200 bg-white p-4">
+                <article key={item.id} className="border-b border-briefli-line p-5 last:border-b-0">
                   <div className="flex items-start gap-3">
                     <KindIcon kind={item.kind} />
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold uppercase text-gray-500">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">
                           {kindLabel(item.kind)}
                         </span>
                         <span className={`rounded px-1.5 py-0.5 text-xs ${statusClass(item.reviewStatus)}`}>
@@ -262,10 +263,10 @@ export default function MemoryPage() {
                         <EditMemory draft={draft} setDraft={setDraft} kind={item.kind} />
                       ) : (
                         <>
-                          <p className="text-sm leading-6 text-gray-900">{item.text}</p>
+                          <p className="text-[15px] font-medium leading-6 text-briefli-ink">{item.text}</p>
                           <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
-                            {item.owner && <span className="rounded bg-gray-100 px-2 py-1">Owner: {item.owner}</span>}
-                            {item.dueDate && <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">Due: {item.dueDate}</span>}
+                            {item.owner && <span className="rounded bg-[#efeee6] px-2 py-1">Owner: {item.owner}</span>}
+                            {item.dueDate && <span className="rounded bg-[#f4ead2] px-2 py-1 text-[#7e5a12]">Due: {item.dueDate}</span>}
                             {isOverdue(item) && (
                               <span className="rounded bg-red-50 px-2 py-1 font-medium text-red-700">Overdue</span>
                             )}
@@ -277,7 +278,7 @@ export default function MemoryPage() {
                       )}
 
                       {item.sourceExcerpt ? (
-                        <blockquote className="mt-3 border-l-2 border-gray-200 pl-3 text-xs leading-5 text-gray-500">
+                        <blockquote className="mt-3 border-l-2 border-briefli-line pl-3 text-xs leading-5 text-briefli-muted">
                           &ldquo;{item.sourceExcerpt}&rdquo;
                         </blockquote>
                       ) : (
@@ -289,7 +290,7 @@ export default function MemoryPage() {
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => router.push(memoryEvidencePath(item))}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-briefli-confirmed hover:underline"
                         >
                           {item.meetingTitle}
                           {item.sourceTimestamp && ` · ${item.sourceTimestamp}`}
@@ -312,7 +313,7 @@ export default function MemoryPage() {
                               <button
                                 onClick={() => review(item, reviewStatusForText(item, draft.text), draft)}
                                 disabled={isBusy}
-                                className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 rounded bg-briefli-ink px-2.5 py-1.5 text-xs text-white hover:bg-black disabled:opacity-50"
                               >
                                 {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                                 Save
@@ -332,7 +333,7 @@ export default function MemoryPage() {
                                 <button
                                   onClick={() => markFollowUpReviewed(item)}
                                   disabled={isBusy}
-                                  className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
+                                  className="inline-flex items-center gap-1 rounded bg-briefli-ink px-2.5 py-1.5 text-xs text-white hover:bg-black disabled:opacity-50"
                                 >
                                   {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                                   Reviewed for now
@@ -407,14 +408,14 @@ function SuggestedActions({
       <button
         onClick={onConfirm}
         disabled={busy}
-        className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-2.5 py-1.5 text-xs text-white hover:bg-gray-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded bg-[#2f6e5d] px-2.5 py-1.5 text-xs text-white hover:bg-[#245648] disabled:opacity-50"
       >
         <Check className="h-3.5 w-3.5" /> Confirm
       </button>
       <button
         onClick={onCorrect}
         disabled={busy}
-        className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+        className="inline-flex items-center gap-1 rounded border border-briefli-line px-2.5 py-1.5 text-xs text-briefli-muted hover:bg-briefli-sidebar"
       >
         <Pencil className="h-3.5 w-3.5" /> Correct
       </button>
@@ -478,7 +479,7 @@ function KindIcon({ kind }: { kind: MeetingMemory['kind'] }) {
       ? <CircleHelp className="h-5 w-5" />
       : <CheckCircle2 className="h-5 w-5" />;
   return (
-    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-md bg-gray-100 text-gray-700">
+    <div className="flex h-9 w-9 flex-none items-center justify-center rounded bg-briefli-sidebar text-briefli-muted">
       {icon}
     </div>
   );
@@ -492,7 +493,7 @@ function EmptyView({ view }: { view: MemoryView }) {
     open: ['No open loops', 'Confirmed commitments and unresolved questions will appear here.'],
   };
   return (
-    <div className="rounded-lg border border-dashed border-gray-300 bg-white px-6 py-12 text-center">
+    <div className="border-y border-dashed border-briefli-line px-6 py-12 text-center">
       <FileQuestion className="mx-auto h-6 w-6 text-gray-400" />
       <h2 className="mt-3 text-sm font-semibold text-gray-900">{copy[view][0]}</h2>
       <p className="mt-1 text-sm text-gray-500">{copy[view][1]}</p>
@@ -510,6 +511,6 @@ function kindLabel(kind: MeetingMemory['kind']): string {
 
 function statusClass(status: MeetingMemory['reviewStatus']): string {
   return status === 'suggested'
-    ? 'bg-amber-50 text-amber-700'
-    : 'bg-emerald-50 text-emerald-700';
+    ? 'bg-[#f4ead2] text-[#7e5a12]'
+    : 'bg-[#e2eee9] text-briefli-confirmed';
 }

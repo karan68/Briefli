@@ -5,7 +5,6 @@ import { Switch } from "./ui/switch"
 import { FolderOpen } from "lucide-react"
 import { invoke } from "@tauri-apps/api/core"
 import Analytics from "@/lib/analytics"
-import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch"
 import { useConfig, NotificationSettings } from "@/contexts/ConfigContext"
 
 export function PreferenceSettings() {
@@ -149,21 +148,21 @@ export function PreferenceSettings() {
   return (
     <div className="space-y-6">
       {/* Notifications Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
+      <section className="border-b border-briefli-line pb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Notifications</h3>
-            <p className="text-sm text-gray-600">Enable or disable notifications of start and end of meeting</p>
+            <h3 className="text-base font-semibold text-briefli-ink">Notifications</h3>
+            <p className="mt-1 text-sm text-briefli-muted">Show a system notification when capture starts and stops.</p>
           </div>
           <Switch checked={notificationsEnabledValue} onCheckedChange={setNotificationsEnabled} />
         </div>
-      </div>
+      </section>
 
       {/* Data Storage Locations Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Data Storage Locations</h3>
-        <p className="text-sm text-gray-600 mb-6">
-          View and access where Briefli stores your data
+      <section className="border-b border-briefli-line pb-6">
+        <h3 className="text-base font-semibold text-briefli-ink">Local storage</h3>
+        <p className="mb-5 mt-1 text-sm text-briefli-muted">
+          Open the folder where Briefli keeps meeting recordings.
         </p>
 
         <div className="space-y-4">
@@ -198,14 +197,14 @@ export function PreferenceSettings() {
           </div> */}
 
           {/* Recordings Location */}
-          <div className="p-4 border rounded-lg bg-gray-50">
-            <div className="font-medium mb-2">Meeting Recordings</div>
-            <div className="text-sm text-gray-600 mb-3 break-all font-mono text-xs">
+          <div className="rounded border border-briefli-line bg-briefli-surface p-4">
+            <div className="mb-2 font-medium text-briefli-ink">Meeting recordings</div>
+            <div className="mb-3 break-all font-mono text-xs text-briefli-muted">
               {storageLocations?.recordings || 'Loading...'}
             </div>
             <button
               onClick={() => handleOpenFolder('recordings')}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-2 rounded border border-briefli-line px-3 py-2 text-sm text-briefli-muted transition-colors hover:bg-briefli-sidebar hover:text-briefli-ink"
             >
               <FolderOpen className="w-4 h-4" />
               Open Folder
@@ -213,17 +212,12 @@ export function PreferenceSettings() {
           </div>
         </div>
 
-        <div className="mt-4 p-3 bg-blue-50 rounded-md">
-          <p className="text-xs text-blue-800">
-            <strong>Note:</strong> Database and models are stored together in your application data directory for unified management.
+        <div className="mt-4 border-l-2 border-briefli-confirmed pl-3">
+          <p className="text-xs leading-5 text-briefli-muted">
+            Transcripts, meeting memory, and local models stay in Briefli&apos;s application data directory.
           </p>
         </div>
-      </div>
-
-      {/* Analytics Section */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
-        <AnalyticsConsentSwitch />
-      </div>
+      </section>
     </div>
   )
 }

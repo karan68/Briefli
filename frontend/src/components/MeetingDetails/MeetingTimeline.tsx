@@ -21,8 +21,8 @@ const KIND_CONFIG: Record<
   chapter: {
     icon: BookOpen,
     srLabel: 'Chapter',
-    iconClass: 'text-blue-500',
-    activeClass: 'border-blue-500 bg-blue-50',
+    iconClass: 'text-briefli-muted',
+    activeClass: 'border-[#697069] bg-[#efeee6]',
   },
   action: {
     icon: ListChecks,
@@ -33,14 +33,14 @@ const KIND_CONFIG: Record<
   question: {
     icon: HelpCircle,
     srLabel: 'Question',
-    iconClass: 'text-violet-600',
-    activeClass: 'border-violet-500 bg-violet-50',
+    iconClass: 'text-[#a47316]',
+    activeClass: 'border-[#a47316] bg-[#f4ead2]',
   },
   resume: {
     icon: PlayCircle,
     srLabel: 'Resumes after pause',
-    iconClass: 'text-amber-600',
-    activeClass: 'border-amber-500 bg-amber-50',
+    iconClass: 'text-[#d94b35]',
+    activeClass: 'border-[#d94b35] bg-[#f7e9e4]',
   },
 };
 

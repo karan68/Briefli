@@ -14,9 +14,10 @@ interface EmptyStateSummaryProps {
   onGenerate: () => void;
   hasModel: boolean;
   isGenerating?: boolean;
+  showAction?: boolean;
 }
 
-export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }: EmptyStateSummaryProps) {
+export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false, showAction = true }: EmptyStateSummaryProps) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -26,13 +27,13 @@ export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }
     >
       <FileQuestion className="w-16 h-16 text-gray-300 mb-4" />
       <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        No Summary Generated Yet
+        No meeting record yet
       </h3>
       <p className="text-sm text-gray-500 mb-6 max-w-md">
-        Generate an AI-powered summary of your meeting transcript to get key points, action items, and decisions.
+        Build a source-backed record of the key decisions, commitments, and open questions in this conversation.
       </p>
 
-      <TooltipProvider>
+      {showAction && <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
             <div>
@@ -52,7 +53,7 @@ export function EmptyStateSummary({ onGenerate, hasModel, isGenerating = false }
             </TooltipContent>
           )}
         </Tooltip>
-      </TooltipProvider>
+      </TooltipProvider>}
 
       {!hasModel && (
         <p className="text-xs text-amber-600 mt-3">

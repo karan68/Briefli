@@ -1,10 +1,10 @@
 [package]
-name = "meetily"
+name = "briefli"
 version = "0.4.0"
-description = "A Tauri App for meeting minutes"
-authors = ["Sujith S"]
+description = "A private, source-backed meeting record"
+authors = ["Briefli contributors"]
 license = "MIT"
-repository = "https://github.com/Zackriya-Solutions/meeting-minutes"
+repository = "https://github.com/karan68/Briefli"
 edition = "2021"
 rust-version = "1.77"
 

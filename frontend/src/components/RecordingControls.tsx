@@ -342,11 +342,14 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
   return (
     <TooltipProvider>
       <div className="flex flex-col space-y-2">
-        <div className="flex items-center space-x-2 bg-white rounded-full shadow-lg px-4 py-2">
+        <div
+          className="flex min-h-16 items-center gap-3 rounded-md border border-briefli-line px-3 py-2 text-white shadow-[0_12px_35px_rgba(32,38,33,0.18)]"
+          style={{ backgroundColor: 'var(--briefli-ink)' }}
+        >
           {isProcessing && !isParentProcessing ? (
             <div className="flex items-center space-x-2">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
-              <span className="text-sm text-gray-600">Processing recording...</span>
+              <span className="text-sm text-white/75">Processing recording...</span>
             </div>
           ) : (
             <>
@@ -389,28 +392,34 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                 <>
                   {!isRecording ? (
                     // Start recording button
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          onClick={() => {
-                            Analytics.trackButtonClick('start_recording', 'recording_controls');
-                            handleStartRecording();
-                          }}
-                          disabled={isStarting || isProcessing || isRecordingDisabled || isValidatingModel}
-                          className={`w-12 h-12 flex items-center justify-center ${isStarting || isProcessing || isValidatingModel ? 'bg-gray-400' : 'bg-red-500 hover:bg-red-600'
-                            } rounded-full text-white transition-colors relative`}
-                        >
-                          {isValidatingModel ? (
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          ) : (
-                            <Mic size={20} />
-                          )}
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Start recording</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            onClick={() => {
+                              Analytics.trackButtonClick('start_recording', 'recording_controls');
+                              handleStartRecording();
+                            }}
+                            disabled={isStarting || isProcessing || isRecordingDisabled || isValidatingModel}
+                            className={`relative flex h-11 w-11 items-center justify-center rounded text-white transition-colors ${isStarting || isProcessing || isValidatingModel ? 'bg-white/25' : 'bg-[#d94b35] hover:bg-[#b93d2b]'
+                              }`}
+                          >
+                            {isValidatingModel ? (
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            ) : (
+                              <Mic size={20} />
+                            )}
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Start recording</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <div className="min-w-[116px] pr-2">
+                        <span className="block text-sm font-semibold text-white">Start recording</span>
+                        <span className="block text-[11px] text-white/55">Audio stays local</span>
+                      </div>
+                    </>
                   ) : (
                     // Recording controls (pause/resume + stop)
                     <>
@@ -471,11 +480,11 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                     </>
                   )}
 
-                  <div className="flex items-center space-x-1 mx-4">
+                  <div className="ml-auto flex items-center space-x-1 border-l border-white/15 pl-4 pr-1">
                     {barHeights.map((height, index) => (
                       <div
                         key={index}
-                        className={`w-1 rounded-full transition-all duration-200 ${isPaused ? 'bg-orange-500' : 'bg-red-500'
+                        className={`w-1 rounded-full transition-all duration-200 ${isPaused ? 'bg-briefli-caution' : 'bg-briefli-capture'
                           }`}
                         style={{
                           height: isRecording && !isPaused ? height : '4px',

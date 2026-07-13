@@ -283,12 +283,13 @@ export default function PreparePage() {
   };
 
   return (
-    <main className="min-h-screen bg-gray-50 py-8 pr-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Prepare</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Bring confirmed decisions and open loops into your next recurring conversation.
+    <main className="h-screen overflow-y-auto bg-briefli-paper px-8 py-7 custom-scrollbar">
+      <div className="mx-auto max-w-7xl">
+        <header className="mb-7 border-b border-briefli-line pb-6">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-briefli-confirmed">Next conversation brief</p>
+          <h1 className="font-brand text-3xl font-semibold text-briefli-ink">Prepare</h1>
+          <p className="mt-2 text-sm text-briefli-muted">
+            Bring confirmed decisions and open loops back before the conversation starts.
           </p>
         </header>
 
@@ -297,10 +298,10 @@ export default function PreparePage() {
             <Loader2 className="h-4 w-4 animate-spin" /> Loading conversation spaces...
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-5">
+          <div className="grid gap-8 lg:grid-cols-[250px_minmax(0,1fr)]">
+            <aside className="space-y-6 border-r border-briefli-line pr-6">
               <section>
-                <h2 className="mb-2 text-xs font-semibold uppercase text-gray-500">Recurring spaces</h2>
+                <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">Recurring spaces</h2>
                 <div className="space-y-1">
                   {spaces.map((space) => {
                     const isSelected = selectedSpaceId === space.id;
@@ -347,8 +348,8 @@ export default function PreparePage() {
                     return (
                       <div
                         key={space.id}
-                        className={`group flex items-center rounded-md text-sm ${
-                          isSelected ? 'bg-gray-900 text-white' : 'bg-white text-gray-700'
+                        className={`group flex items-center rounded text-sm ${
+                          isSelected ? 'bg-[#202621] text-white' : 'text-briefli-muted'
                         }`}
                       >
                         <button
@@ -357,7 +358,7 @@ export default function PreparePage() {
                             setPendingDeleteSpaceId(null);
                           }}
                           className={`min-w-0 flex-1 truncate px-3 py-2 text-left ${
-                            isSelected ? '' : 'hover:bg-gray-100'
+                            isSelected ? '' : 'hover:bg-briefli-sidebar hover:text-briefli-ink'
                           }`}
                         >
                           {space.name}
@@ -418,14 +419,14 @@ export default function PreparePage() {
                     maxLength={100}
                     placeholder="Client or project"
                     aria-label="New recurring space name"
-                    className="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+                    className="min-w-0 flex-1 rounded border border-briefli-line bg-briefli-surface px-3 py-2 text-sm focus:border-briefli-ink focus:outline-none"
                   />
                   <button
                     onClick={createSpace}
                     disabled={creating || !newSpaceName.trim()}
                     aria-label="Create recurring space"
                     title="Create recurring space"
-                    className="rounded-md bg-gray-900 p-2 text-white hover:bg-gray-700 disabled:opacity-40"
+                    className="rounded bg-[#202621] p-2 text-white hover:bg-black disabled:opacity-40"
                   >
                     {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                   </button>
@@ -433,11 +434,11 @@ export default function PreparePage() {
               </section>
 
               {metrics && (
-                <section className="rounded-md border border-gray-200 bg-white p-3">
+                <section className="border-t border-briefli-line pt-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <h2 className="text-xs font-semibold uppercase text-gray-500">Local usage counters</h2>
-                      <p className="mt-1 text-xs text-gray-500">Stored only on this device.</p>
+                      <h2 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">Local usage counters</h2>
+                      <p className="mt-1 text-xs text-briefli-muted">Stored only on this device.</p>
                     </div>
                     <input
                       type="checkbox"
@@ -473,13 +474,13 @@ export default function PreparePage() {
               )}
 
               <section>
-                <h2 className="mb-2 text-xs font-semibold uppercase text-gray-500">Meeting assignments</h2>
+                <h2 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-muted">Meeting assignments</h2>
                 {assignments.length === 0 ? (
                   <p className="text-sm text-gray-500">Record a meeting to assign it here.</p>
                 ) : (
                   <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
                     {assignments.map((assignment) => (
-                      <label key={assignment.meetingId} className="block rounded-md border border-gray-200 bg-white p-2">
+                      <label key={assignment.meetingId} className="block border-b border-briefli-line py-2 last:border-b-0">
                         <span className="mb-1 block truncate text-xs font-medium text-gray-700">
                           {assignment.meetingTitle}
                         </span>
@@ -488,7 +489,7 @@ export default function PreparePage() {
                           disabled={busyMeetingId === assignment.meetingId}
                           onChange={(event) => assignMeeting(assignment.meetingId, event.target.value || null)}
                           aria-label={`Space for ${assignment.meetingTitle}`}
-                          className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
+                          className="w-full rounded border border-briefli-line bg-briefli-surface px-2 py-1.5 text-xs text-briefli-muted"
                         >
                           <option value="">Unassigned</option>
                           {spaces.map((space) => (
@@ -502,7 +503,7 @@ export default function PreparePage() {
               </section>
             </aside>
 
-            <section className="min-w-0">
+            <section className="min-w-0 pb-10">
               {!selectedSpace ? (
                 <EmptyBrief
                   title="Create a recurring space"
@@ -519,30 +520,30 @@ export default function PreparePage() {
                 />
               ) : (
                 <div>
-                  <div className="mb-5 flex flex-wrap items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gray-900 text-white">
+                  <div className="mb-7 flex flex-wrap items-center gap-3 border-b border-briefli-line pb-5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded bg-[#202621] text-white">
                       <BriefcaseBusiness className="h-5 w-5" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900">{brief.space.name}</h2>
-                      <p className="text-xs text-gray-500">{brief.space.meetingCount} assigned meetings</p>
+                      <h2 className="font-brand text-2xl font-semibold text-briefli-ink">{brief.space.name}</h2>
+                      <p className="text-xs text-briefli-muted">Prepared from {brief.space.meetingCount} assigned meetings</p>
                     </div>
                     <div className="ml-auto flex gap-2">
                       <button
                         onClick={() => copyBrief('markdown')}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100"
+                        className="inline-flex items-center gap-1 rounded border border-briefli-line bg-briefli-surface px-2.5 py-1.5 text-xs text-briefli-muted hover:text-briefli-ink"
                       >
                         <Clipboard className="h-3.5 w-3.5" /> Markdown
                       </button>
                       <button
                         onClick={() => copyBrief('json')}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-100"
+                        className="inline-flex items-center gap-1 rounded border border-briefli-line bg-briefli-surface px-2.5 py-1.5 text-xs text-briefli-muted hover:text-briefli-ink"
                       >
                         <Clipboard className="h-3.5 w-3.5" /> JSON
                       </button>
                     </div>
                   </div>
-                  <div className="space-y-6">
+                  <div className="space-y-8">
                     <BriefSection
                       title="Decisions"
                       items={brief.decisions}
@@ -586,25 +587,25 @@ function BriefSection({
   if (items.length === 0) return null;
   return (
     <section>
-      <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
+      <h3 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-briefli-muted">
         {icon} {title} <span className="text-xs font-normal text-gray-400">{items.length}</span>
       </h3>
-      <div className="space-y-2">
+      <div className="border-t border-briefli-line">
         {items.map((item) => (
-          <article key={item.id} className="rounded-lg border border-gray-200 bg-white p-4">
-            <p className="text-sm leading-6 text-gray-900">{item.text}</p>
+          <article key={item.id} className="border-b border-briefli-line py-5">
+            <p className="text-[15px] font-medium leading-6 text-briefli-ink">{item.text}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs text-gray-600">
-              {item.owner && <span className="rounded bg-gray-100 px-2 py-1">Owner: {item.owner}</span>}
-              {item.dueDate && <span className="rounded bg-blue-50 px-2 py-1 text-blue-700">Due: {item.dueDate}</span>}
+              {item.owner && <span className="rounded bg-briefli-sidebar px-2 py-1">Owner: {item.owner}</span>}
+              {item.dueDate && <span className="rounded bg-[#f4ead2] px-2 py-1 text-[#7e5a12]">Due: {item.dueDate}</span>}
             </div>
             {item.sourceExcerpt && (
-              <blockquote className="mt-3 border-l-2 border-gray-200 pl-3 text-xs leading-5 text-gray-500">
+              <blockquote className="mt-3 border-l-2 border-briefli-line pl-3 text-xs leading-5 text-briefli-muted">
                 &ldquo;{item.sourceExcerpt}&rdquo;
               </blockquote>
             )}
             <button
               onClick={() => onOpen(item)}
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-briefli-confirmed hover:underline"
             >
               {item.meetingTitle}{item.sourceTimestamp && ` · ${item.sourceTimestamp}`}
               <ArrowUpRight className="h-3.5 w-3.5" />
@@ -618,7 +619,7 @@ function BriefSection({
 
 function EmptyBrief({ title, description }: { title: string; description: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-gray-300 bg-white px-8 py-14 text-center">
+    <div className="border-y border-dashed border-briefli-line px-8 py-14 text-center">
       <BriefcaseBusiness className="mx-auto h-7 w-7 text-gray-400" />
       <h2 className="mt-3 text-sm font-semibold text-gray-900">{title}</h2>
       <p className="mx-auto mt-1 max-w-md text-sm text-gray-500">{description}</p>

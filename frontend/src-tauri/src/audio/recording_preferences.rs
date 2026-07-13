@@ -43,36 +43,36 @@ impl Default for RecordingPreferences {
 pub fn get_default_recordings_folder() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
-        // Windows: %USERPROFILE%\Music\meetily-recordings
+        // Windows: %USERPROFILE%\Music\Briefli Recordings
         if let Some(music_dir) = dirs::audio_dir() {
-            music_dir.join("meetily-recordings")
+            music_dir.join("Briefli Recordings")
         } else {
             // Fallback to Documents if Music folder is not available
             dirs::document_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("meetily-recordings")
+                .join("Briefli Recordings")
         }
     }
 
     #[cfg(target_os = "macos")]
     {
-        // macOS: ~/Movies/meetily-recordings
+        // macOS: ~/Movies/Briefli Recordings
         if let Some(movies_dir) = dirs::video_dir() {
-            movies_dir.join("meetily-recordings")
+            movies_dir.join("Briefli Recordings")
         } else {
             // Fallback to Documents if Movies folder is not available
             dirs::document_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("meetily-recordings")
+                .join("Briefli Recordings")
         }
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        // Linux/Others: ~/Documents/meetily-recordings
+        // Linux/Others: ~/Documents/Briefli Recordings
         dirs::document_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("meetily-recordings")
+            .join("Briefli Recordings")
     }
 }
 
@@ -110,6 +110,21 @@ pub async fn load_recording_preferences<R: Runtime>(
         match serde_json::from_value::<RecordingPreferences>(value.clone()) {
             Ok(mut p) => {
                 info!("Loaded recording preferences from store");
+                if p.save_folder.file_name().and_then(|name| name.to_str()) == Some("meetily-recordings") {
+                    if let Some(parent) = p.save_folder.parent() {
+                        let briefli_folder = parent.join("Briefli Recordings");
+                        if !briefli_folder.exists() {
+                            if p.save_folder.exists() {
+                                if let Err(error) = std::fs::rename(&p.save_folder, &briefli_folder) {
+                                    warn!("Could not migrate legacy recordings folder: {}", error);
+                                }
+                            }
+                        }
+                        if briefli_folder.exists() || !p.save_folder.exists() {
+                            p.save_folder = briefli_folder;
+                        }
+                    }
+                }
                 // Update macOS backend to current value if needed
                 #[cfg(target_os = "macos")]
                 {

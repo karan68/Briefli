@@ -155,17 +155,17 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold mb-4">Recording Settings</h3>
-        <p className="text-sm text-gray-600 mb-6">
-          Configure how your audio recordings are saved during meetings.
+        <h3 className="text-base font-semibold text-briefli-ink">Recording</h3>
+        <p className="mb-6 mt-1 text-sm text-briefli-muted">
+          Choose what Briefli captures and where audio is stored.
         </p>
       </div>
 
       {/* Auto Save Toggle */}
-      <div className="flex items-center justify-between p-4 border rounded-lg">
+      <div className="flex items-center justify-between border-b border-briefli-line py-4">
         <div className="flex-1">
           <div className="font-medium">Save Audio Recordings</div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-briefli-muted">
             Automatically save audio files when recording stops
           </div>
         </div>
@@ -179,25 +179,25 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       {/* Folder Location - Only shown when auto_save is enabled */}
       {preferences.auto_save && (
         <div className="space-y-4">
-          <div className="p-4 border rounded-lg bg-gray-50">
+          <div className="rounded border border-briefli-line bg-briefli-surface p-4">
             <div className="font-medium mb-2">Save Location</div>
-            <div className="text-sm text-gray-600 mb-3 break-all">
+            <div className="mb-3 break-all text-sm text-briefli-muted">
               {preferences.save_folder || 'Default folder'}
             </div>
             <button
               onClick={handleOpenFolder}
-              className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-2 rounded border border-briefli-line px-3 py-2 text-sm text-briefli-muted transition-colors hover:bg-briefli-sidebar"
             >
               <FolderOpen className="w-4 h-4" />
               Open Folder
             </button>
           </div>
 
-          <div className="p-4 border rounded-lg bg-blue-50">
-            <div className="text-sm text-blue-800">
+          <div className="border-l-2 border-briefli-confirmed pl-3">
+            <div className="text-sm text-briefli-muted">
               <strong>File Format:</strong> {preferences.file_format.toUpperCase()} files
             </div>
-            <div className="text-xs text-blue-600 mt-1">
+            <div className="mt-1 text-xs text-briefli-muted">
               Recordings are saved with timestamp: recording_YYYYMMDD_HHMMSS.{preferences.file_format}
             </div>
           </div>
@@ -214,10 +214,10 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
       )}
 
       {/* Recording Notification Toggle */}
-      <div className="flex items-center justify-between p-4 border rounded-lg">
+      <div className="flex items-center justify-between border-b border-briefli-line py-4">
         <div className="flex-1">
           <div className="font-medium">Recording Start Notification</div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-briefli-muted">
             Show reminder to inform participants when recording starts
           </div>
         </div>
@@ -235,7 +235,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
             Set your preferred microphone and system audio devices for recording. These will be automatically selected when starting new recordings.
           </p>
 
-          <div className="border rounded-lg p-4 bg-gray-50">
+          <div className="rounded border border-briefli-line bg-briefli-surface p-4">
             <DeviceSelection
               selectedDevices={{
                 micDevice: preferences.preferred_mic_device,

@@ -11,11 +11,26 @@ export default {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-        // Consistent color palette
-        primary: "hsl(221, 83%, 53%)", // blue-600
-        secondary: "hsl(210, 40%, 96%)", // gray-50
-        accent: "hsl(221, 83%, 53%)", // blue-600
-        destructive: "hsl(0, 84%, 60%)", // red-500
+        primary: "hsl(var(--primary))",
+        secondary: "hsl(var(--secondary))",
+        accent: "hsl(var(--accent))",
+        destructive: "hsl(var(--destructive))",
+        briefli: {
+          paper: "var(--briefli-paper)",
+          surface: "var(--briefli-surface)",
+          sidebar: "var(--briefli-sidebar)",
+          ink: "var(--briefli-ink)",
+          muted: "var(--briefli-muted)",
+          line: "var(--briefli-line)",
+          capture: "var(--briefli-capture)",
+          "capture-dark": "var(--briefli-capture-dark)",
+          confirmed: "var(--briefli-confirmed)",
+          caution: "var(--briefli-caution)",
+        },
+      },
+      fontFamily: {
+        sans: ["var(--font-plex-sans)", "sans-serif"],
+        brand: ["var(--font-lora)", "serif"],
       },
       fontSize: {
         'display': ['32px', { lineHeight: '1.2', fontWeight: '700' }],

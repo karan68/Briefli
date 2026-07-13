@@ -700,8 +700,8 @@ export const AISummary = ({ summary, status, error, onSummaryChange, onRegenerat
       {/* <div className="flex items-center justify-between mb-4">
         <div className="flex items-center space-x-2">
           <span className="text-2xl">✨</span>
-          <h2 className="text-2xl font-semibold bg-gradient-to-r from-purple-600 to-blue-500 bg-clip-text text-transparent">
-            AI Enhanced Summary
+          <h2 className="font-brand text-2xl font-semibold text-briefli-ink">
+            Meeting record
           </h2>
         </div>
         <div className="flex items-center space-x-2">

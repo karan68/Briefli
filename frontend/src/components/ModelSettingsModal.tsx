@@ -1286,7 +1286,7 @@ export function ModelSettingsModal({
                             </div>
                             <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
+                                className="h-full rounded-full bg-[#202621] transition-all duration-300"
                                 style={{ width: `${getProgress('gemma3:1b')}%` }}
                               />
                             </div>
@@ -1342,7 +1342,7 @@ export function ModelSettingsModal({
                               </div>
                               <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-gradient-to-r from-blue-500 to-blue-600 rounded-full transition-all duration-300"
+                                  className="h-full rounded-full bg-[#202621] transition-all duration-300"
                                   style={{ width: `${progress}%` }}
                                 />
                               </div>

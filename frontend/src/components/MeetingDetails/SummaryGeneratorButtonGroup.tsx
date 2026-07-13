@@ -249,12 +249,12 @@ export function SummaryGeneratorButtonGroup({
         <Button
           variant="outline"
           size="sm"
-          className="bg-gradient-to-r from-red-50 to-orange-50 hover:from-red-100 hover:to-orange-100 border-red-200 xl:px-4"
+          className="border-[#d94b35] bg-[#d94b35] text-white hover:bg-[#b93d2b] hover:text-white xl:px-4"
           onClick={() => {
             Analytics.trackButtonClick('stop_summary_generation', 'meeting_details');
             onStopGeneration();
           }}
-          title="Stop summary generation"
+          title="Stop building meeting record"
         >
           <Square className="xl:mr-2" size={18} fill="currentColor" />
           <span className="hidden lg:inline xl:inline">Stop</span>
@@ -263,7 +263,7 @@ export function SummaryGeneratorButtonGroup({
         <Button
           variant="outline"
           size="sm"
-          className="bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 border-blue-200 xl:px-4"
+          className="border-[#202621] bg-[#202621] text-white hover:bg-black hover:text-white xl:px-4"
           onClick={() => {
             Analytics.trackButtonClick('generate_summary', 'meeting_details');
             checkOllamaModelsAndGenerate();
@@ -274,7 +274,7 @@ export function SummaryGeneratorButtonGroup({
               ? 'Loading model configuration...'
               : isCheckingModels
                 ? 'Checking models...'
-                : hasSummary ? 'Regenerate AI Summary' : 'Generate AI Summary'
+                : hasSummary ? 'Rebuild meeting record' : 'Build meeting record'
           }
         >
           {isCheckingModels || isModelConfigLoading ? (
@@ -285,7 +285,7 @@ export function SummaryGeneratorButtonGroup({
           ) : (
             <>
               <Sparkles className="xl:mr-2" size={18} />
-              <span className="hidden lg:inline xl:inline">{hasSummary ? 'Regenerate Summary' : 'Generate Summary'}</span>
+              <span className="hidden lg:inline xl:inline">{hasSummary ? 'Rebuild record' : 'Build record'}</span>
             </>
           )}
         </Button>

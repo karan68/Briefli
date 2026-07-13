@@ -1,10 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon, FlaskConical } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { Settings2, Mic, Database as DatabaseIcon, SparkleIcon, FlaskConical } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { motion } from 'framer-motion';
 import { TranscriptSettings } from '@/components/TranscriptSettings';
 import { RecordingSettings } from '@/components/RecordingSettings';
 import { PreferenceSettings } from '@/components/PreferenceSettings';
@@ -23,13 +21,9 @@ const TABS = [
 ] as const;
 
 export default function SettingsPage() {
-  const router = useRouter();
   const { transcriptModelConfig, setTranscriptModelConfig } = useConfig();
 
-  // Animation state for tabs
   const [activeTab, setActiveTab] = useState('general');
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
 
   // Load saved transcript configuration on mount
   useEffect(() => {
@@ -51,82 +45,43 @@ export default function SettingsPage() {
     loadTranscriptConfig();
   }, [setTranscriptModelConfig]);
 
-  // Update underline position when active tab changes
-  useLayoutEffect(() => {
-    const activeIndex = TABS.findIndex(tab => tab.value === activeTab);
-    const activeTabElement = tabRefs.current[activeIndex];
-
-    if (activeTabElement) {
-      const { offsetLeft, offsetWidth } = activeTabElement;
-      setUnderlineStyle({ left: offsetLeft, width: offsetWidth });
-    }
-  }, [activeTab]);
-
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      {/* Fixed Header */}
-      <div className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-8 py-6">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              <span>Back</span>
-            </button>
-            <h1 className="text-3xl font-bold">Settings</h1>
-          </div>
+    <div className="flex h-screen flex-col overflow-hidden bg-briefli-paper">
+      <header className="border-b border-briefli-line px-8 py-6">
+        <div className="mx-auto max-w-6xl">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-briefli-muted">Application preferences</p>
+          <h1 className="font-brand text-3xl font-semibold text-briefli-ink">Settings</h1>
         </div>
-      </div>
+      </header>
 
-      {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto p-8 pt-6">
-          {/* Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="bg-transparent relative rounded-none border-b border-gray-200 p-0 h-auto">
-              {TABS.map((tab, index) => {
+      <div className="min-h-0 flex-1">
+        <div className="mx-auto h-full max-w-6xl px-8 py-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="grid h-full grid-cols-[170px_minmax(0,1fr)] gap-8">
+            <TabsList className="flex h-fit flex-col items-stretch gap-1 rounded-none bg-transparent p-0">
+              {TABS.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
-                    ref={el => { tabRefs.current[index] = el }}
-                    className="flex items-center gap-2 px-6 py-4 bg-transparent rounded-none border-0 data-[state=active]:bg-transparent data-[state=active]:text-blue-600 data-[state=active]:shadow-none text-gray-600 hover:text-gray-900 relative z-10"
+                    className="flex h-10 justify-start gap-3 rounded px-3 text-sm text-briefli-muted shadow-none hover:bg-briefli-sidebar hover:text-briefli-ink data-[state=active]:bg-[#202621] data-[state=active]:text-white data-[state=active]:shadow-none"
                   >
                     <Icon className="w-4 h-4" />
                     {tab.label}
                   </TabsTrigger>
                 );
               })}
-
-              <motion.div
-                className="absolute bottom-0 z-20 h-0.5 bg-blue-600"
-                layoutId="underline"
-                style={{ left: underlineStyle.left, width: underlineStyle.width }}
-                transition={{ type: 'spring', stiffness: 400, damping: 40 }}
-              />
             </TabsList>
 
-            <TabsContent value="general">
-              <PreferenceSettings />
-            </TabsContent>
-            <TabsContent value="recording">
-              <RecordingSettings />
-            </TabsContent>
-            <TabsContent value="Transcriptionmodels">
-              <TranscriptSettings
-                transcriptModelConfig={transcriptModelConfig}
-                setTranscriptModelConfig={setTranscriptModelConfig}
-              />
-            </TabsContent>
-            <TabsContent value="summaryModels">
-              <SummaryModelSettings />
-            </TabsContent>
-            <TabsContent value="beta" className="mt-6">
-              <BetaSettings />
-            </TabsContent>
+            <div className="min-h-0 overflow-y-auto pr-2 custom-scrollbar">
+              <TabsContent value="general" className="mt-0"><PreferenceSettings /></TabsContent>
+              <TabsContent value="recording" className="mt-0"><RecordingSettings /></TabsContent>
+              <TabsContent value="Transcriptionmodels" className="mt-0">
+                <TranscriptSettings transcriptModelConfig={transcriptModelConfig} setTranscriptModelConfig={setTranscriptModelConfig} />
+              </TabsContent>
+              <TabsContent value="summaryModels" className="mt-0"><SummaryModelSettings /></TabsContent>
+              <TabsContent value="beta" className="mt-0"><BetaSettings /></TabsContent>
+            </div>
           </Tabs>
         </div>
       </div>

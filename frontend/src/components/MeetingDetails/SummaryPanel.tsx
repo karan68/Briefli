@@ -253,20 +253,23 @@ export function SummaryPanel({
   );
 
   return (
-    <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
+    <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-briefli-paper">
       {/* Title area */}
-      <div className="p-4 border-b border-gray-200">
-        {/* <EditableTitle
+      <div className="border-b border-briefli-line px-6 py-4">
+        <div className="mb-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-briefli-confirmed">Meeting record</p>
+          <EditableTitle
           title={meetingTitle}
           isEditing={isEditingTitle}
           onStartEditing={onStartEditTitle}
           onFinishEditing={onFinishEditTitle}
           onChange={onTitleChange}
-        /> */}
+          />
+        </div>
 
         {/* Button groups - only show when summary exists */}
         {aiSummary && !isSummaryLoading && (
-          <div className="flex items-center justify-center w-full pt-0 gap-2">
+          <div className="flex w-full flex-wrap items-center justify-start gap-2">
             {/* Left-aligned: Summary Generator Button Group */}
             <div className="flex-shrink-0">
               <SummaryGeneratorButtonGroup
@@ -330,15 +333,15 @@ export function SummaryPanel({
           {/* Loading spinner */}
           <div className="flex items-center justify-center flex-1">
             <div className="text-center">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mb-4"></div>
-              <p className="text-gray-600">Generating AI Summary...</p>
+              <div className="mb-4 inline-block h-12 w-12 animate-spin rounded-full border-2 border-briefli-line border-t-briefli-capture"></div>
+              <p className="text-briefli-muted">Building meeting record...</p>
             </div>
           </div>
         </div>
       ) : !aiSummary ? (
         <div className="flex flex-col h-full">
           {/* Centered Summary Generator Button Group when no summary */}
-          <div className="flex items-center justify-center gap-2 pt-8 pb-4">
+          <div className="flex items-center justify-start gap-2 px-8 pb-4 pt-7">
             <SummaryGeneratorButtonGroup
               modelConfig={modelConfig}
               setModelConfig={setModelConfig}
@@ -362,10 +365,11 @@ export function SummaryPanel({
             onGenerate={() => onGenerateSummary(customPrompt)}
             hasModel={modelConfig.provider !== null && modelConfig.model !== null}
             isGenerating={isSummaryLoading}
+            showAction={false}
           />
         </div>
       ) : transcripts?.length > 0 && (
-        <div className="flex-1 overflow-y-auto min-h-0">
+        <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
           {summaryResponse && (
             <div className="fixed bottom-0 left-0 right-0 bg-white shadow-lg p-4 max-h-1/3 overflow-y-auto">
               <h3 className="text-lg font-semibold mb-2">Meeting Summary</h3>
@@ -411,7 +415,7 @@ export function SummaryPanel({
               ) : null}
             </div>
           )}
-          <div className="p-6 w-full">
+          <div className="w-full max-w-4xl p-8">
             <BlockNoteSummaryView
               ref={summaryRef}
               summaryData={aiSummary}
@@ -434,7 +438,7 @@ export function SummaryPanel({
           {summaryStatus !== 'idle' && (
             <div className={`mt-4 p-4 rounded-lg ${summaryStatus === 'error' ? 'bg-red-100 text-red-700' :
               summaryStatus === 'completed' ? 'bg-green-100 text-green-700' :
-                'bg-blue-100 text-blue-700'
+                'bg-[#f4ead2] text-[#7e5a12]'
               }`}>
               <p className="text-sm font-medium">{getSummaryStatusMessage(summaryStatus)}</p>
             </div>
