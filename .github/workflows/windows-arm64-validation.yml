@@ -86,6 +86,7 @@ jobs:
           $env:CMAKE_GENERATOR = 'Ninja'
           $env:CC_aarch64_pc_windows_msvc = 'clang-cl'
           $env:CXX_aarch64_pc_windows_msvc = 'clang-cl'
+          $env:CXXFLAGS_aarch64_pc_windows_msvc = '/EHsc'
           clang-cl --version
           if ($LASTEXITCODE -ne 0) { throw 'clang-cl is required for ARM64 llama.cpp' }
           ninja --version
