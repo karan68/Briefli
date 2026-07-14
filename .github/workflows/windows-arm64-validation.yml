@@ -1,0 +1,203 @@
+name: Windows ARM64 Validation
+
+on:
+  push:
+    branches: [feature/windows-arm64]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-arm64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke:
+    name: Native Windows ARM64 build and smoke test
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify native ARM64 runner
+        shell: pwsh
+        run: |
+          $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+          if ($architecture -ne [System.Runtime.InteropServices.Architecture]::Arm64) {
+            throw "Expected native ARM64 runner, got $architecture"
+          }
+          Write-Host "Native runner architecture: $architecture"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Setup Node 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          targets: aarch64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Download pinned native ARM64 FFmpeg
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-07-13-14-11/ffmpeg-n8.1.2-22-g94138f6973-winarm64-lgpl-8.1.zip'
+          $expectedHash = '3c3045df24c9bae0c726d2a9cbf8f7a3fa3369b7b7fe039b28e0fa3571d5c07f'
+          $archive = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
+          Invoke-WebRequest $url -OutFile $archive
+          $actualHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "FFmpeg checksum mismatch: $actualHash"
+          }
+          Expand-Archive $archive -DestinationPath $extract -Force
+          $ffmpeg = Get-ChildItem $extract -Recurse -File -Filter ffmpeg.exe |
+            Select-Object -First 1
+          if (-not $ffmpeg) { throw 'Native ARM64 ffmpeg.exe not found in archive' }
+          New-Item -ItemType Directory -Force frontend/src-tauri/binaries | Out-Null
+          Copy-Item $ffmpeg.FullName `
+            frontend/src-tauri/binaries/ffmpeg-aarch64-pc-windows-msvc.exe
+          & frontend/src-tauri/binaries/ffmpeg-aarch64-pc-windows-msvc.exe -version
+          if ($LASTEXITCODE -ne 0) { throw 'Native ARM64 FFmpeg did not execute' }
+
+      - name: Compile ARM64 application and tests
+        run: cargo check -p briefli --lib --tests --locked
+
+      - name: Build native ARM64 llama-helper sidecar
+        shell: pwsh
+        run: |
+          $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'llama-helper-target'
+          cargo build --release -p llama-helper --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force frontend/src-tauri/binaries | Out-Null
+          Copy-Item "$env:CARGO_TARGET_DIR/release/llama-helper.exe" `
+            frontend/src-tauri/binaries/llama-helper-aarch64-pc-windows-msvc.exe
+          Remove-Item $env:CARGO_TARGET_DIR -Recurse -Force
+
+      - name: Build native ARM64 NSIS installer
+        working-directory: frontend
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ''
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
+        run: pnpm tauri build --bundles nsis --config src-tauri/tauri.arm64.json
+
+      - name: Verify ARM64 PE binaries
+        shell: pwsh
+        run: |
+          function Assert-Arm64PE([string]$Path) {
+            if (-not (Test-Path $Path -PathType Leaf)) {
+              throw "Missing binary: $Path"
+            }
+            $stream = [System.IO.File]::OpenRead($Path)
+            try {
+              $reader = [System.IO.BinaryReader]::new($stream)
+              if ($reader.ReadUInt16() -ne 0x5A4D) { throw "Not a PE file: $Path" }
+              $stream.Position = 0x3C
+              $peOffset = $reader.ReadUInt32()
+              $stream.Position = $peOffset
+              if ($reader.ReadUInt32() -ne 0x00004550) { throw "Invalid PE signature: $Path" }
+              $machine = $reader.ReadUInt16()
+              if ($machine -ne 0xAA64) {
+                throw ('Expected ARM64 PE machine 0xAA64 for {0}, got 0x{1:X4}' -f $Path, $machine)
+              }
+            } finally {
+              $stream.Dispose()
+            }
+            Write-Host "ARM64 PE verified: $Path"
+          }
+
+          Assert-Arm64PE 'target/release/briefli.exe'
+          Assert-Arm64PE 'frontend/src-tauri/binaries/llama-helper-aarch64-pc-windows-msvc.exe'
+          Assert-Arm64PE 'frontend/src-tauri/binaries/ffmpeg-aarch64-pc-windows-msvc.exe'
+
+      - name: Install, launch, initialize, and uninstall on ARM64
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem target/release/bundle/nsis -Filter '*setup.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'ARM64 NSIS installer not found' }
+
+          $install = Start-Process $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
+
+          $uninstallEntry = Get-ItemProperty `
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', `
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' `
+            -ErrorAction SilentlyContinue |
+            Where-Object DisplayName -EQ 'Briefli' |
+            Select-Object -First 1
+          if (-not $uninstallEntry) { throw 'Briefli uninstall entry not found' }
+
+          $candidates = @(
+            (Join-Path $uninstallEntry.InstallLocation 'Briefli.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Briefli\Briefli.exe'),
+            (Join-Path $env:ProgramFiles 'Briefli\Briefli.exe')
+          )
+          $app = $candidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } |
+            Select-Object -First 1
+          if (-not $app) { throw 'Installed Briefli.exe not found' }
+
+          $appDataDirectory = Join-Path $env:APPDATA 'com.briefli.app'
+          $database = Join-Path $appDataDirectory 'meeting_minutes.sqlite'
+          New-Item -ItemType Directory -Force $appDataDirectory | Out-Null
+          $watcher = [System.IO.FileSystemWatcher]::new($appDataDirectory, 'meeting_minutes.sqlite')
+          $watcher.EnableRaisingEvents = $true
+          $process = Start-Process $app -PassThru
+          try {
+            $ready = $process.WaitForInputIdle(60000)
+            if (-not $ready -or $process.HasExited) {
+              throw 'Briefli did not reach an interactive window on ARM64'
+            }
+            if (-not (Test-Path $database)) {
+              $null = $watcher.WaitForChanged([System.IO.WatcherChangeTypes]::Created, 30000)
+            }
+            if (-not (Test-Path $database)) {
+              throw "Briefli did not initialize its database at $database"
+            }
+          } finally {
+            $watcher.Dispose()
+            if (-not $process.HasExited) { Stop-Process $process.Id -Force }
+          }
+
+          $uninstallCommand = $uninstallEntry.QuietUninstallString
+          if (-not $uninstallCommand) { $uninstallCommand = $uninstallEntry.UninstallString }
+          if ($uninstallCommand -match '^"([^"]+)"\s*(.*)$') {
+            $uninstaller = $Matches[1]
+            $arguments = $Matches[2]
+          } elseif ($uninstallCommand -match '^(\S+)\s*(.*)$') {
+            $uninstaller = $Matches[1]
+            $arguments = $Matches[2]
+          } else {
+            throw "Could not parse uninstall command: $uninstallCommand"
+          }
+          if ($arguments -notmatch '(^|\s)/S(\s|$)') { $arguments = "$arguments /S".Trim() }
+          $uninstall = Start-Process $uninstaller -ArgumentList $arguments -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)" }
+          if (Test-Path $app) { throw 'Installed Briefli.exe remains after uninstall' }
+
+      - name: Upload experimental ARM64 installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: briefli-windows-arm64-experimental
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
