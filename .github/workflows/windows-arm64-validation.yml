@@ -83,6 +83,13 @@ jobs:
         shell: pwsh
         run: |
           $env:CARGO_TARGET_DIR = Join-Path $env:RUNNER_TEMP 'llama-helper-target'
+          $env:CMAKE_GENERATOR = 'Ninja'
+          $env:CC_aarch64_pc_windows_msvc = 'clang-cl'
+          $env:CXX_aarch64_pc_windows_msvc = 'clang-cl'
+          clang-cl --version
+          if ($LASTEXITCODE -ne 0) { throw 'clang-cl is required for ARM64 llama.cpp' }
+          ninja --version
+          if ($LASTEXITCODE -ne 0) { throw 'Ninja is required for ARM64 llama.cpp' }
           cargo build --release -p llama-helper --locked
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force frontend/src-tauri/binaries | Out-Null
