@@ -155,8 +155,9 @@ jobs:
             Select-Object -First 1
           if (-not $uninstallEntry) { throw 'Briefli uninstall entry not found' }
 
+          $installLocation = $uninstallEntry.InstallLocation.Trim('"')
           $candidates = @(
-            (Join-Path $uninstallEntry.InstallLocation 'Briefli.exe'),
+            (Join-Path $installLocation 'Briefli.exe'),
             (Join-Path $env:LOCALAPPDATA 'Briefli\Briefli.exe'),
             (Join-Path $env:ProgramFiles 'Briefli\Briefli.exe')
           )
