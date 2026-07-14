@@ -12,7 +12,7 @@
 
 Briefli is a desktop app that records, transcribes, and summarizes your meetings **entirely on your own machine**. No cloud. No bots. No subscription. Audio never leaves your device.
 
-Built on [Tauri](https://tauri.app/) (Rust) + Next.js. Forked from [Meetily](https://github.com/Zackriya-Solutions/meetily) and extended with cross-meeting memory, commitments tracking, and in-person capture.
+Built on [Tauri](https://tauri.app/) (Rust) + Next.js.
 
 ---
 
