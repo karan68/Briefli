@@ -1,127 +1,62 @@
-# Meetily Privacy Policy
+# Briefli Privacy and Data Handling
 
-*Last updated: [Current Date]*
+**Last updated:** 2026-07-14
 
-## Our Privacy-First Commitment
+Briefli is a local-first desktop application. It does not require a Briefli
+account and does not operate a meeting-data cloud service.
 
-Meetily is built on the principle that your meeting data should remain private and under your control. This privacy policy explains how we handle data in our open-source meeting assistant.
+## Data Kept on the Device
 
-## Data Processing Philosophy
+Briefli stores meeting recordings, transcripts, summaries, reviewed memories,
+and recurring spaces in the application's local data folders.
+Capture, transcription, full-text search, evidence matching, and the built-in
+AI summary option run on the device.
 
-### Local-First Processing
-- **Meeting transcription**: Processed entirely on your device using local Whisper models
-- **Audio recordings**: Never transmitted to external servers
-- **Meeting content**: Remains on your infrastructure
-- **AI summaries**: Generated locally or through your chosen LLM provider
+Ollama uses `http://localhost:11434` by default. If you configure another
+Ollama address, meeting text is sent to that address and may leave the device.
 
-### Your Data Ownership
-- You own all meeting data, transcripts, and recordings
-- Data is stored locally on your device
-- No vendor lock-in - export your data anytime
-- Complete control over data retention and deletion
+## Optional External AI Providers
 
-## Usage Analytics
+Briefli supports OpenAI, Anthropic, Groq, OpenRouter, and custom
+OpenAI-compatible endpoints. When one of these providers is selected for a
+summary, Briefli sends the meeting transcript text, summary instructions, and
+any custom summary prompt directly to that provider or endpoint. The recorded
+audio file is not included in this summary request.
 
-### What We Collect
-Usage analytics is optional and off by default. When you choose to enable it, Meetily collects minimal, anonymized usage data:
+Those services process data under their own terms, privacy policies, retention
+settings, and account configuration. Briefli cannot control what an external
+provider retains. A custom endpoint may be local or remote; the person
+configuring it is responsible for knowing where it runs.
 
-**Application Usage:**
-- Feature usage patterns (which tools you use most)
-- Session duration and frequency
-- Performance metrics (transcription success rates, error frequencies)
-- UI interaction patterns (button clicks, navigation flows)
+Provider API keys and custom endpoint credentials are stored in Briefli's local
+SQLite settings database. They are not described as encrypted at rest. Anyone
+with access to the local application data may be able to access them.
 
-**Technical Metrics:**
-- Application version and platform information
-- Error logs and crash reports (anonymized)
-- Performance benchmarks (processing times, resource usage)
+## Other Network Requests
 
-### What We DON'T Collect
-We never collect:
-- ❌ Meeting content, transcripts, or recordings
-- ❌ Personal information or identifiable data
-- ❌ File names, meeting titles, or metadata
-- ❌ Audio data or voice patterns
-- ❌ Participant names or contact information
-- ❌ LLM conversations or AI-generated content
+Briefli makes network requests when it downloads transcription or summary
+models, checks GitHub Releases for application updates, or fetches a selected
+provider's model list. These requests expose ordinary connection metadata such
+as an IP address to the service being contacted, but they do not intentionally
+include meeting content.
 
-### Why We Collect This Data
-When enabled, analytics helps us with:
-- **Product Quality**: Identifying and fixing bugs that impact user experience
-- **Performance Optimization**: Understanding resource usage and system bottlenecks
-- **Security**: Detecting potential security issues and vulnerabilities
-- **Feature Development**: Making data-driven decisions about new features
-- **Open Source Sustainability**: Ensuring the project meets user needs effectively
+Briefli product telemetry is disabled. The optional brief/source usage counters
+are disabled by default and, when enabled, remain in the local SQLite database.
 
-### Analytics Implementation
-- **Provider**: PostHog (privacy-focused analytics platform)
-- **Default**: Off by default; analytics starts only after you enable it in settings
-- **Anonymization**: All data linked to generated user IDs only - no personal identification
-- **Data retention**: 12 months maximum, then automatically deleted
-- **Encryption**: All data encrypted in transit using industry-standard protocols
-- **Location**: Data processed in accordance with PostHog's privacy policy
-- **Access Control**: Strictly limited to core development team members
+## Recording Consent
 
-## Third-Party Services
+Recording laws and workplace rules vary by location and context. Before
+recording, tell every participant and obtain any consent required where the
+conversation takes place. Briefli provides a reminder but cannot determine
+whether a recording is lawful or permitted.
 
-### LLM Providers (Optional)
-If you choose to use external LLM providers:
-- **Anthropic Claude**: Subject to Anthropic's privacy policy
-- **Groq**: Subject to Groq's privacy policy
-- **Local Ollama**: Processed entirely on your device
+## Control and Portability
 
-### Analytics Service (Optional)
-- **PostHog**: Used for usage analytics when enabled
-- **Data**: Only anonymized usage patterns, no meeting content
-- **Control**: Completely optional, off by default, and user-controlled
+Briefli can copy transcripts and meeting records as Markdown, and Prepare briefs
+as Markdown or JSON, without an account. The recordings folder is available
+from Settings. The SQLite database and other application state remain in the
+operating system's application-data directory and should be included in the
+user's own backup and device-security practices.
 
-## Your Privacy Rights
-
-### Data Control
-- **Access**: View all data stored locally on your device
-- **Export**: Export your data in standard formats
-- **Delete**: Remove all data from your device
-
-
-### Analytics Transparency
-- **Open source**: Full analytics implementation available for review in our source code
-- **Opt-in**: New and existing installs have analytics disabled until you turn it on
-- **Questions**: Contact us for any analytics-related concerns
-
-## Data Security
-
-### Local Security
-- Data encrypted at rest using your device's security features
-- No transmission of sensitive meeting data
-- Standard file system permissions protect your data
-
-### Open Source Transparency
-- Full source code available for security review
-- Community-audited privacy implementations
-- No hidden data collection or tracking
-
-## Changes to This Policy
-
-We will notify users of any material changes to this privacy policy through:
-- Updates to this document in our GitHub repository
-- Release notes for application updates
-- In-app notifications for significant privacy changes
-
-## Contact Us
-
-For privacy-related questions or concerns:
-- **GitHub Issues**: [Create an issue](https://github.com/Zackriya-Solutions/meeting-minutes/issues)
-- **Email**: [Contact form](https://www.zackriya.com/service-interest-form/)
-- **Community**: [Discord](https://discord.gg/crRymMQBFH)
-
-## Open Source Commitment
-
-As an open-source project under MIT license, you can:
-- Review our complete privacy implementation
-- Modify data handling to meet your requirements
-- Deploy entirely on your own infrastructure
-- Contribute to privacy improvements
-
----
-
-*This privacy policy applies to Meetily v0.0.5 and later versions. For enterprise deployments, additional privacy controls may be available.*
+Privacy questions and reproducible concerns can be filed in the
+[Briefli issue tracker](https://github.com/karan68/Briefli/issues).

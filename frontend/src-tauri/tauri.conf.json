@@ -1,7 +1,7 @@
 {
     "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
     "productName": "Briefli",
-    "version": "0.4.0",
+    "version": "0.5.0-beta.1",
     "identifier": "com.briefli.app",
     "build": {
         "frontendDist": "../out",
@@ -112,7 +112,7 @@
     },
     "plugins": {
         "updater": {
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVDQTYzMUQ3ODc5N0M4MkEKUldRcXlKZUgxekdtN09DRkVWSHNpZlJseEVOUmpNd1dDSTNaLzZ3MXJGTnY3WW1pdnlOYjBpbkIK",
+            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY5NzU3QjZFOEMwNTE4MEMKUldRTUdBV01ibnQxYWJiaC9VSzVYUHN1V2RQZnpjM0tJMVYzSVdqUjhTSnh5a3ZpcjR6SWVWUW8K",
             "endpoints": [
                 "https://github.com/karan68/Briefli/releases/latest/download/latest.json"
             ]

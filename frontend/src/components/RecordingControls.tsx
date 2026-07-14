@@ -417,7 +417,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
                       </Tooltip>
                       <div className="min-w-[116px] pr-2">
                         <span className="block text-sm font-semibold text-white">Start recording</span>
-                        <span className="block text-[11px] text-white/55">Audio stays local</span>
+                        <span className="block text-[11px] text-white/55">Inform participants first</span>
                       </div>
                     </>
                   ) : (

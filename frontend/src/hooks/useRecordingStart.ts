@@ -46,6 +46,13 @@ export function useRecordingStart(
     inPersonModeRef.current = inPersonMode;
   }, [inPersonMode]);
 
+  const showConsentReminder = useCallback(() => {
+    toast.info('Before you record', {
+      description: 'Tell every participant and obtain any consent required where you are.',
+      duration: 6000,
+    });
+  }, []);
+
   // Generate meeting title with timestamp
   const generateMeetingTitle = useCallback(() => {
     const now = new Date();
@@ -94,6 +101,7 @@ export function useRecordingStart(
   // Handle manual recording start (from button click)
   const handleRecordingStart = useCallback(async () => {
     try {
+      showConsentReminder();
       console.log('handleRecordingStart called - checking Parakeet model status');
 
       // Check if Parakeet transcription model is ready before starting
@@ -153,7 +161,7 @@ export function useRecordingStart(
       // Re-throw so RecordingControls can handle device-specific errors
       throw error;
     }
-  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkParakeetReady, checkIfModelDownloading, selectedDevices, showModal, setStatus]);
+  }, [generateMeetingTitle, setMeetingTitle, setIsRecording, clearTranscripts, setIsMeetingActive, checkParakeetReady, checkIfModelDownloading, selectedDevices, showModal, setStatus, showConsentReminder]);
 
   // Check for autoStartRecording flag and start recording automatically
   useEffect(() => {
@@ -161,6 +169,7 @@ export function useRecordingStart(
       if (typeof window !== 'undefined') {
         const shouldAutoStart = sessionStorage.getItem('autoStartRecording');
         if (shouldAutoStart === 'true' && !isRecording && !isAutoStarting) {
+          showConsentReminder();
           console.log('Auto-starting recording from navigation...');
           setIsAutoStarting(true);
           sessionStorage.removeItem('autoStartRecording'); // Clear the flag
@@ -240,6 +249,7 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    showConsentReminder,
   ]);
 
   // Listen for direct recording trigger from sidebar when already on home page
@@ -251,6 +261,7 @@ export function useRecordingStart(
       }
 
       console.log('Direct start from sidebar - checking Parakeet model status');
+      showConsentReminder();
       setIsAutoStarting(true);
 
       // Check if Parakeet transcription model is ready before starting
@@ -329,6 +340,7 @@ export function useRecordingStart(
     checkIfModelDownloading,
     showModal,
     setStatus,
+    showConsentReminder,
   ]);
 
   return {

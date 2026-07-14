@@ -68,7 +68,7 @@ export async function isAnyTranscriptionReady(): Promise<boolean> {
 }
 
 /** Is a specific Whisper model downloaded and usable? */
-async function isWhisperModelReady(modelName: string): Promise<boolean> {
+export async function isWhisperModelReady(modelName: string): Promise<boolean> {
   try {
     await WhisperAPI.init();
     const models = await WhisperAPI.getAvailableModels();
@@ -76,6 +76,11 @@ async function isWhisperModelReady(modelName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Is the tiny ready-to-record Whisper model downloaded and usable? */
+export async function isFastWhisperReady(): Promise<boolean> {
+  return isWhisperModelReady(FAST_WHISPER_MODEL);
 }
 
 /**
@@ -153,8 +158,8 @@ export async function ensureBestTranscriptionEngine(): Promise<TranscriptionProv
 }
 
 /**
- * Kick off the tiny Whisper fast-path model download (fire-and-forget).
- * Safe to call alongside the Parakeet download during onboarding.
+ * Download the tiny Whisper fast-path model. Progress is reported through the
+ * Whisper model download events; failures are returned to the caller.
  */
 export async function startFastWhisperDownload(): Promise<void> {
   try {
@@ -162,5 +167,6 @@ export async function startFastWhisperDownload(): Promise<void> {
     await WhisperAPI.downloadModel(FAST_WHISPER_MODEL);
   } catch (error) {
     console.error('[fastTranscription] Failed to start tiny Whisper download:', error);
+    throw error;
   }
 }

@@ -254,6 +254,31 @@ export function ModelSettingsModal({
     (modelConfig.provider === 'ollama' && ollamaEndpointChanged) ||
     isCustomOpenAIInvalid;
 
+  const cloudProviderNames: Partial<Record<ModelConfig['provider'], string>> = {
+    claude: 'Anthropic',
+    groq: 'Groq',
+    openai: 'OpenAI',
+    openrouter: 'OpenRouter',
+  };
+  const cloudProviderName = cloudProviderNames[modelConfig.provider];
+  const configuredEndpoint = modelConfig.provider === 'custom-openai'
+    ? customOpenAIEndpoint.trim()
+    : modelConfig.provider === 'ollama'
+      ? ollamaEndpoint.trim()
+      : '';
+  const sendsMeetingTextOffDevice = Boolean(
+    cloudProviderName ||
+    modelConfig.provider === 'custom-openai' ||
+    (modelConfig.provider === 'ollama' && configuredEndpoint),
+  );
+  const summaryDataDisclosure = cloudProviderName
+    ? `Meeting transcript text, summary instructions, and any custom summary prompt are sent to ${cloudProviderName}. Recorded audio is not sent by this summary request.`
+    : modelConfig.provider === 'custom-openai'
+      ? `Meeting transcript text and summary instructions are sent to ${configuredEndpoint || 'the endpoint you configure'}. Confirm whether that server is local or remote before saving.`
+      : modelConfig.provider === 'ollama' && configuredEndpoint
+        ? `Meeting transcript text and summary instructions are sent to ${configuredEndpoint}. Confirm that you trust this Ollama server.`
+        : 'Summary processing stays on this device. Meeting transcript text is not sent to an external AI provider.';
+
   useEffect(() => {
     const fetchModelConfig = async () => {
       // If parent component manages config, skip fetch and just mark as loaded
@@ -943,6 +968,12 @@ export function ModelSettingsModal({
             )}
           </div>
         </div>
+
+        <Alert className={sendsMeetingTextOffDevice ? 'border-amber-300 bg-amber-50' : 'border-briefli-line bg-briefli-sidebar'}>
+          <AlertDescription className={sendsMeetingTextOffDevice ? 'text-amber-900' : 'text-briefli-muted'}>
+            {summaryDataDisclosure}
+          </AlertDescription>
+        </Alert>
 
         {/* Custom OpenAI Configuration Section */}
         {modelConfig.provider === 'custom-openai' && (

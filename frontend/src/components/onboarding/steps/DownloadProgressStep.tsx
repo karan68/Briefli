@@ -8,7 +8,13 @@ import { useOnboarding } from '@/contexts/OnboardingContext';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSummaryModelSizeLabel, getSummaryModelSizeMb } from '@/lib/onboarding-summary-model';
-import { isAnyTranscriptionReady } from '@/lib/fastTranscription';
+import {
+  FAST_WHISPER_MODEL,
+  isAnyTranscriptionReady,
+  isFastWhisperReady,
+  isParakeetReady,
+  startFastWhisperDownload,
+} from '@/lib/fastTranscription';
 
 const PARAKEET_MODEL = 'parakeet-tdt-0.6b-v3-int8';
 
@@ -54,6 +60,14 @@ export function DownloadProgressStep() {
     speedMbps: 0,
   });
 
+  const [fastWhisperState, setFastWhisperState] = useState<DownloadState>({
+    status: 'waiting',
+    progress: 0,
+    downloadedMb: 0,
+    totalMb: 31,
+    speedMbps: 0,
+  });
+
   const [isCompleting, setIsCompleting] = useState(false);
   // Fast-path: true once ANY transcription engine is ready (the tiny Whisper
   // model, ~31 MB, or Parakeet). Lets the user continue in seconds instead of
@@ -63,6 +77,55 @@ export function DownloadProgressStep() {
   const summaryDownloadStartedRef = useRef(false);
   const retryingRef = useRef(false);
   const retryingSummaryRef = useRef(false);
+  const retryingFastWhisperRef = useRef(false);
+
+  const handleStartParakeetDownload = async () => {
+    if (parakeetDownloadStartedRef.current || parakeetDownloaded) return;
+    parakeetDownloadStartedRef.current = true;
+    setParakeetState((previous) => ({
+      ...previous,
+      status: 'downloading',
+      error: undefined,
+    }));
+
+    try {
+      await startBackgroundDownloads({
+        includeParakeet: true,
+        includeSummary: false,
+      });
+    } catch (error) {
+      parakeetDownloadStartedRef.current = false;
+      setParakeetState((previous) => ({
+        ...previous,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  };
+
+  const handleRetryFastWhisper = async () => {
+    if (retryingFastWhisperRef.current) return;
+    retryingFastWhisperRef.current = true;
+    setFastWhisperState((previous) => ({
+      ...previous,
+      status: 'downloading',
+      error: undefined,
+      progress: 0,
+      downloadedMb: 0,
+    }));
+
+    try {
+      await startFastWhisperDownload();
+    } catch (error) {
+      setFastWhisperState((previous) => ({
+        ...previous,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    } finally {
+      retryingFastWhisperRef.current = false;
+    }
+  };
 
   // Retry download handler
   const handleRetryDownload = async () => {
@@ -169,19 +232,41 @@ export function DownloadProgressStep() {
     checkPlatform();
   }, []);
 
-  // Poll for fast-path readiness: unblock "Continue" as soon as the tiny
-  // Whisper model (or Parakeet) is downloaded, so the user isn't forced to wait
-  // for the full ~670 MB transcription engine.
+  // Poll both engines independently so the UI never labels Parakeet (or another
+  // Whisper model) as the ready-to-record tiny Whisper download.
   useEffect(() => {
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | null = null;
 
     const check = async () => {
       try {
-        const ready = await isAnyTranscriptionReady();
-        if (!cancelled && ready) {
-          setFastTranscriptionReady(true);
-          if (interval) clearInterval(interval);
+        const [anyEngineReady, tinyWhisperReady, parakeetReady] = await Promise.all([
+          isAnyTranscriptionReady(),
+          isFastWhisperReady(),
+          isParakeetReady(),
+        ]);
+        if (!cancelled) {
+          setFastTranscriptionReady(anyEngineReady);
+        }
+        if (!cancelled && tinyWhisperReady) {
+          setFastWhisperState((previous) => ({
+            ...previous,
+            status: 'completed',
+            progress: 100,
+            downloadedMb: previous.totalMb,
+          }));
+        }
+        if (!cancelled && parakeetReady) {
+          setParakeetDownloaded(true);
+          setParakeetState((previous) => ({
+            ...previous,
+            status: 'completed',
+            progress: 100,
+            downloadedMb: previous.totalMb,
+          }));
+        }
+        if (anyEngineReady && interval) {
+          clearInterval(interval);
         }
       } catch {
         // ignore transient errors and keep polling
@@ -196,24 +281,84 @@ export function DownloadProgressStep() {
     };
   }, []);
 
-  // Start the required transcription model immediately; summary readiness must not block it.
   useEffect(() => {
-    if (parakeetDownloadStartedRef.current) return;
-    parakeetDownloadStartedRef.current = true;
+    let cancelled = false;
+    const unlisteners: Array<() => void> = [];
 
-    if (!parakeetDownloaded) {
-      setParakeetState((prev) => ({ ...prev, status: 'downloading' }));
-    }
-
-    startBackgroundDownloads({
-      includeParakeet: true,
-      includeSummary: false,
-    }).catch((error) => {
-      console.error('Failed to start Parakeet download:', error);
-      if (!parakeetDownloaded) {
-        setParakeetState((prev) => ({ ...prev, status: 'error', error: String(error) }));
+    const setup = async () => {
+      const registered = await Promise.all([
+        listen<{ modelName: string; progress: number }>('model-download-progress', (event) => {
+          if (event.payload.modelName !== FAST_WHISPER_MODEL) return;
+          const progress = event.payload.progress;
+          setFastWhisperState((previous) => ({
+            ...previous,
+            status: 'downloading',
+            progress,
+            downloadedMb: previous.totalMb * progress / 100,
+            error: undefined,
+          }));
+        }),
+        listen<{ modelName: string }>('model-download-complete', (event) => {
+          if (event.payload.modelName !== FAST_WHISPER_MODEL) return;
+          setFastTranscriptionReady(true);
+          setFastWhisperState((previous) => ({
+            ...previous,
+            status: 'completed',
+            progress: 100,
+            downloadedMb: previous.totalMb,
+            error: undefined,
+          }));
+        }),
+        listen<{ modelName: string; error: string }>('model-download-error', (event) => {
+          if (event.payload.modelName !== FAST_WHISPER_MODEL) return;
+          setFastWhisperState((previous) => ({
+            ...previous,
+            status: 'error',
+            error: event.payload.error,
+          }));
+        }),
+      ]);
+      if (cancelled) {
+        registered.forEach((unlisten) => unlisten());
+        return;
       }
+      unlisteners.push(...registered);
+
+      if (await isFastWhisperReady()) {
+        setFastTranscriptionReady(true);
+        setFastWhisperState((previous) => ({
+          ...previous,
+          status: 'completed',
+          progress: 100,
+          downloadedMb: previous.totalMb,
+        }));
+        return;
+      }
+
+      setFastWhisperState((previous) => ({ ...previous, status: 'downloading' }));
+      startFastWhisperDownload().catch((error) => {
+        if (cancelled) return;
+        setFastWhisperState((previous) => ({
+          ...previous,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        }));
+      });
+    };
+
+    setup().catch((error) => {
+      if (cancelled) return;
+      setFastWhisperState((previous) => ({
+        ...previous,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      }));
     });
+
+    return () => {
+      cancelled = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
   }, []);
 
   // Start the selected summary model only after the backend recommendation is known.
@@ -374,9 +519,9 @@ export function DownloadProgressStep() {
           status: 'completed',
           progress: 100,
         }));
-      } else if (!actuallyAvailable && parakeetState.status === 'error') {
+      } else if (!actuallyAvailable && parakeetState.status === 'error' && !fastTranscriptionReady) {
         toast.error('Transcription engine required', {
-          description: 'Please retry the download before continuing.',
+          description: 'Please retry the ready-to-record model before continuing.',
         });
         return;
       }
@@ -391,7 +536,7 @@ export function DownloadProgressStep() {
     // Show toast if downloads still in progress
     if (!downloadsComplete) {
       toast.info('Downloads will continue in the background', {
-        description: 'You can start using the app. Recording will be available once speech recognition is ready.',
+        description: 'Recording is ready. Accuracy and summary upgrades will finish in the background.',
         duration: 5000,
       });
     }
@@ -424,7 +569,9 @@ export function DownloadProgressStep() {
     icon: React.ReactNode,
     state: DownloadState,
     modelSize: string,
-    sizeUnit = 'MB'
+    sizeUnit = 'MB',
+    onRetry?: () => Promise<void>,
+    waitingAction?: { label: string; onClick: () => Promise<void> },
   ) => (
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-4">
@@ -482,13 +629,23 @@ export function DownloadProgressStep() {
         </div>
       )}
 
+      {state.status === 'waiting' && waitingAction && (
+        <button
+          onClick={waitingAction.onClick}
+          className="mt-2 w-full h-9 px-4 border border-gray-300 hover:bg-gray-50 text-gray-900 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
+        >
+          <Download className="h-4 w-4" />
+          {waitingAction.label}
+        </button>
+      )}
+
       {state.status === 'error' && state.error && (
         <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-md">
           <p className="text-sm text-red-600 font-medium">Download Error</p>
           <p className="text-xs text-red-500 mt-1">{state.error}</p>
-          {(title === 'Transcription Engine' || title === 'Summary Engine') && (
+          {onRetry && (
             <button
-              onClick={title === 'Transcription Engine' ? handleRetryDownload : handleRetrySummaryDownload}
+              onClick={onRetry}
               className="mt-3 w-full h-9 px-4 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -505,8 +662,8 @@ export function DownloadProgressStep() {
 
   return (
     <OnboardingContainer
-      title="Getting things ready"
-      description="You can start using Briefli after downloading the Transcription Engine."
+      title={fastTranscriptionReady || parakeetDownloaded ? 'Ready to record' : 'Preparing recording'}
+      description="Tiny Whisper unlocks recording first. Higher-accuracy transcription and local summaries can finish in the background."
       step={3}
       totalSteps={isMac ? 4 : 3}
     >
@@ -514,18 +671,31 @@ export function DownloadProgressStep() {
         {/* Download Cards */}
         <div className="w-full max-w-lg space-y-4">
           {renderDownloadCard(
-            'Transcription Engine',
+            'Ready-to-record model',
             <Mic className="w-5 h-5 text-gray-600" />,
-            parakeetState,
-            '~670 MB'
+            fastWhisperState,
+            'Tiny Whisper · ~31 MB',
+            'MB',
+            handleRetryFastWhisper,
           )}
 
           {renderDownloadCard(
-            'Summary Engine',
+            'Accuracy upgrade (optional)',
+            <Download className="w-5 h-5 text-gray-600" />,
+            parakeetState,
+            'Parakeet · ~670 MB',
+            'MB',
+            handleRetryDownload,
+            { label: 'Download accuracy upgrade', onClick: handleStartParakeetDownload },
+          )}
+
+          {renderDownloadCard(
+            'Local summary model',
             <Sparkles className="w-5 h-5 text-gray-600" />,
             summaryState,
             getSummaryModelSizeLabel(selectedSummaryModel || recommendedSummaryModel),
-            'MiB'
+            'MiB',
+            handleRetrySummaryDownload,
           )}
         </div>
 
@@ -544,7 +714,7 @@ export function DownloadProgressStep() {
                 <div>
                   <p className="font-medium">You can continue while this finishes</p>
                   <p className="text-gray-700 mt-1">
-                    Download will continue in the background.
+                    Recording is ready. Any selected downloads will continue in the background.
                   </p>
                 </div>
               </div>

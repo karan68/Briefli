@@ -1,152 +1,168 @@
-# Contributing to Meeting Minutes Updates
+# Contributing to Briefli
 
-Thank you for your interest in contributing to Meetily! This document provides guidelines and instructions for contributing to this project.
+Thank you for improving Briefli. Briefli is a privacy-first meeting memory
+application, so correctness includes persistence, evidence provenance, honest
+local/cloud boundaries, and recovery behavior, not only whether a screen works.
 
-## Development Workflow
+## Before You Start
 
-### Branch Strategy
+- Search existing issues and pull requests before starting duplicate work.
+- Open an issue before a large feature, schema change, dependency change, or
+   product-direction change.
+- Keep each pull request focused on one feature, fix, or maintenance concern.
+- Target `devtest` unless a maintainer asks for another branch.
+- Do not commit generated installers, model files, databases, recordings,
+   credentials, or machine-specific configuration.
 
-- `main` - Production branch
-- `devtest` - Development and testing branch
-- Feature branches should be created from `devtest`
+The active product contract and non-goals are documented in
+[`docs/PRODUCT_CHARTER.md`](docs/PRODUCT_CHARTER.md). Privacy behavior is
+specified in [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md).
 
-### Getting Started
+## Development Setup
 
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/meeting-minutes.git
-   ```
-3. Add the original repository as upstream:
-   ```bash
-   git remote add upstream https://github.com/Zackriya-Solutions/meeting-minutes.git
-   ```
-4. Create a new branch from `devtest`:
-   ```bash
-   git checkout devtest
-   git pull upstream devtest
-   git checkout -b feature/your-feature-name
-   ```
+Briefli uses Node.js 20, pnpm 9.15.9, Bun 1.3.14, Rust stable, and Tauri 2.
+Platform build dependencies are described in [`docs/BUILDING.md`](docs/BUILDING.md)
+and [`docs/GPU_ACCELERATION.md`](docs/GPU_ACCELERATION.md).
 
-### Development Process
+From the repository root:
 
-1. Always start your work from the `devtest` branch
-2. Create a new branch for each feature/fix
-3. Make your changes
-4. Write or update tests as needed
-5. Ensure all tests pass
-6. Update documentation if necessary
-
-### Issue Creation
-
-Before starting work on a new feature or bug fix:
-
-1. Check if an issue already exists
-2. If not, create a new issue with:
-   - Clear title
-   - Detailed description
-   - Steps to reproduce (for bugs)
-   - Expected behavior
-   - Screenshots (if applicable)
-   - Labels (bug, enhancement, etc.)
-
-### Pull Request Process
-
-1. Create a PR from your feature branch to `devtest`
-2. Link the PR to the related issue using the issue number (e.g., "Fixes #123")
-3. Fill out the PR template completely
-4. Ensure CI checks pass
-5. Request review from at least one maintainer
-6. Address any review comments
-7. Once approved, the PR will be merged into `devtest`
-
-### PR Template
-
-```markdown
-## Description
-[Describe your changes here]
-
-## Related Issue
-[Link to the issue this PR addresses]
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Documentation update
-- [ ] Performance improvement
-- [ ] Code refactoring
-- [ ] Other (please describe)
-
-## Testing
-- [ ] Unit tests added/updated
-- [ ] Manual testing performed
-- [ ] All tests pass
-
-## Documentation
-- [ ] Documentation updated
-- [ ] No documentation needed
-
-## Checklist
-- [ ] Code follows project style
-- [ ] Self-reviewed the code
-- [ ] Added comments for complex code
-- [ ] Updated README if needed
+```bash
+cd frontend
+pnpm install --frozen-lockfile
+pnpm tauri:dev
 ```
 
-## Code Style
+On Windows, the CPU-only development command can also be run directly:
 
-- Follow the existing code style
-- Use meaningful variable and function names
-- Add comments for complex logic
-- Keep functions small and focused
-- Write clear commit messages
-
-## Commit Message Format
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
+```powershell
+cd frontend
+.\node_modules\.bin\tauri.cmd dev
 ```
 
-Types:
-- feat: New feature
-- fix: Bug fix
-- docs: Documentation changes
-- style: Code style changes
-- refactor: Code refactoring
-- test: Adding/updating tests
-- chore: Maintenance tasks
+## Engineering Boundaries
 
-## Testing
+Keep changes within the existing ownership model:
 
-- Write unit tests for new features
-- Update existing tests when modifying code
-- Ensure all tests pass before submitting PR
-- Include integration tests for complex features
+- SQLite is the source of truth for meetings, transcripts, summaries, and
+   durable memory.
+- Rust repositories own transactions, reconciliation, evidence matching, and
+   state validation.
+- Tauri commands expose typed operations to the frontend.
+- React owns presentation and interaction, with rollback for failed mutations.
+- AI output remains a suggestion until the user confirms or corrects it.
+- Evidence excerpts must come from stored transcript segments.
+- Confirmed or corrected memories must survive summary regeneration.
+- Local and external-provider behavior must remain distinguishable to users.
 
-## Documentation
+Do not add semantic retrieval, automatic entity graphs, cloud processing, or
+other roadmap work merely to complete a checkbox. New behavior should solve an
+observed product problem and preserve source traceability.
 
-- Update documentation for new features
-- Keep README up to date
-- Document API changes
-- Add comments for complex code
+## Database Changes
 
-## Review Process
+Migrations are append-only after they are merged. Never edit an existing file in
+`frontend/src-tauri/migrations/`; add a new timestamped migration instead.
 
-1. PRs require at least one review
-2. Address all review comments
-3. Keep the PR up to date with `devtest`
-4. Squash commits if requested
+Schema changes must include focused repository tests and must be tested by
+applying every migration in filename order to a fresh SQLite database. Changes
+that reconcile generated data must also test regeneration, malformed input,
+and preservation of user-reviewed state.
 
-## Getting Help
+## Privacy and Public-Repository Safety
 
-- Create an issue for questions
-- Join our community chat
-- Contact maintainers
+Before opening a pull request:
+
+- Remove API keys, tokens, certificates, private hostnames, and private URLs.
+- Remove local databases, recordings, model files, logs with meeting content,
+   and generated build output.
+- Remove user-home paths, key paths, and machine-specific commands or output.
+- Summarize infrastructure failures without pasting credentials, private
+   endpoints, raw SSH output, or sensitive logs.
+- State exactly when transcript text is sent to an external provider; do not
+   describe an external endpoint as local unless that is guaranteed.
+- Do not claim encryption, platform support, hardware support, signing, or
+   successful validation without current evidence.
+
+The PR policy check rejects common private or generated files and modified
+historical migrations:
+
+```bash
+node .github/scripts/pr-policy-check.mjs
+node --test .github/scripts/pr-policy-check.test.mjs
+```
+
+## Validation
+
+Run the narrowest relevant checks while developing, then report every check you
+actually ran in the pull request. Do not mark a check complete because CI is
+expected to run it later.
+
+### Every Change
+
+```bash
+git diff --check
+node .github/scripts/pr-policy-check.mjs
+```
+
+### Frontend Changes
+
+```bash
+cd frontend
+bun test tests/lib
+pnpm build
+```
+
+Add or update focused tests under `frontend/tests/lib` for changed helpers and
+user-visible state behavior.
+
+### Rust Changes
+
+```bash
+cargo fmt --all -- --check
+cargo test -p briefli --lib --locked -- \
+   --skip audio::playback_monitor::tests::test_get_output_device
+```
+
+Run a narrower test first when possible. Audio, device, or acceleration changes
+must include the operating system, hardware, selected devices, and capture mode
+used for manual validation.
+
+### Workflow Changes
+
+Run [actionlint](https://github.com/rhysd/actionlint) against all files in
+`.github/workflows`. Keep reusable workflow inputs and release permissions as
+narrow as possible.
+
+### UI Changes
+
+Attach screenshots for desktop and narrow-window layouts. Include any loading,
+empty, disabled, error, confirmation, and rollback states affected by the
+change. Verify that text does not overlap or overflow.
+
+### Release and Installer Changes
+
+Document the exact Windows version, installer format, signing status, and manual
+install/upgrade/uninstall checks performed. Never describe a local unsigned
+build as a signed release artifact.
+
+## Pull Requests
+
+GitHub automatically pre-fills the repository pull request template. Complete
+all applicable sections and leave non-applicable checks unchecked with a short
+explanation. A useful pull request includes:
+
+- a concise summary and the reason the change exists;
+- a linked issue when one exists;
+- exact commands run and their results;
+- screenshots or hardware evidence where relevant;
+- privacy, persistence, migration, and product-contract impact; and
+- documentation updates or a reason none are needed.
+
+CI is required but is not a substitute for accurate author-provided evidence.
+Reviewers may ask for a smaller change, additional failure-path coverage, or
+manual validation on supported Windows environments.
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the project's MIT License. 
+By contributing, you agree that your contributions will be licensed under the
+repository's MIT License.
