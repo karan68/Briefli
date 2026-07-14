@@ -2,7 +2,7 @@ name: Windows ARM64 Validation
 
 on:
   push:
-    branches: [feature/windows-arm64]
+    branches: [devtest]
   workflow_dispatch:
 
 permissions:

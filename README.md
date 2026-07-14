@@ -18,7 +18,7 @@ Built on [Tauri](https://tauri.app/) (Rust) + Next.js.
 
 ## Download
 
-Download Windows builds from [GitHub Releases](https://github.com/karan68/Briefli/releases).
+Download Windows x64 and experimental Windows ARM64 builds from [GitHub Releases](https://github.com/karan68/Briefli/releases).
 
 - **Stable releases:** reserved for installers with trusted Authenticode signing.
 - **Beta releases:** may be unsigned and trigger an unknown-publisher or SmartScreen warning. The release notes state the signing status for each version.
@@ -27,7 +27,7 @@ Do not treat temporary workflow artifacts or locally built installers as public 
 
 ### User requirements
 
-- Windows 10 or Windows 11, x64
+- Windows 10/11 x64, or Windows 11 ARM64 (experimental)
 - Microphone permission
 - Internet access for first-run model downloads and application updates
 - Several gigabytes of free space if you install a local summary model and the optional Parakeet transcription upgrade
@@ -171,7 +171,7 @@ Read the complete [Briefli Privacy and Data Handling policy](PRIVACY_POLICY.md).
 
 ## Current Limitations
 
-- Windows 10/11 x64 is the currently documented release target.
+- Windows 10/11 x64 is the supported beta target. Windows 11 ARM64 is experimental and has not been exercised with physical audio devices.
 - Search is lexical substring matching, not semantic search.
 - Memory suggestions require a generated record with recognized sections.
 - Briefli does not currently provide speaker diarization, contacts, calendar integration, or automatic reminders.
