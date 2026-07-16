@@ -13,7 +13,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/pr-quality-gate.yml
     with:
-      policy-base-ref: root-commit
+      policy-base-ref: latest-tag
 
   create-release:
     needs: quality-gate
