@@ -296,7 +296,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       attestations: read
-      contents: read
+      contents: write
     steps:
       - name: Setup Java 17
         uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
@@ -411,7 +411,7 @@ jobs:
             if ($platform.Value.signature.Trim() -ne (Get-Content $signaturePath -Raw).Trim()) {
               throw "Updater manifest signature does not match $assetName.sig"
             }
-            cargo run -p briefli --example verify_updater_signature --locked -- `
+            cargo run -p updater-signature-verifier --locked -- `
               $installerPath `
               $signaturePath `
               frontend/src-tauri/tauri.conf.json

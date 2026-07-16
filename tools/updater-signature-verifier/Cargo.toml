@@ -1,0 +1,11 @@
+[package]
+name = "updater-signature-verifier"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+base64 = "0.22.1"
+minisign-verify = "0.2.5"
+serde_json.workspace = true

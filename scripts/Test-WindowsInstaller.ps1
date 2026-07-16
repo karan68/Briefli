@@ -77,7 +77,8 @@ function Find-BriefliExecutable {
 
     $candidates = @()
     if ($UninstallEntry.InstallLocation) {
-        $candidates += Join-Path $UninstallEntry.InstallLocation 'Briefli.exe'
+        $installLocation = ([string]$UninstallEntry.InstallLocation).Trim().Trim('"')
+        $candidates += Join-Path $installLocation 'Briefli.exe'
     }
     if ($UninstallEntry.DisplayIcon) {
         $candidates += ($UninstallEntry.DisplayIcon -replace '^"|"$|,\d+$', '')
