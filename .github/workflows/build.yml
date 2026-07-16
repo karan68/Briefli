@@ -19,7 +19,7 @@ on:
       asset-prefix:
         required: false
         type: string
-        default: "meetily"
+        default: "briefli"
       asset-name-pattern:
         required: false
         type: string
@@ -48,10 +48,12 @@ jobs:
   build:
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     runs-on: ${{ inputs.platform }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
@@ -78,13 +80,13 @@ jobs:
           fi
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
-          version: 8
+          version: 9.15.9
           run_install: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
@@ -94,7 +96,7 @@ jobs:
           echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
       - name: Setup pnpm cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ env.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -102,13 +104,13 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           # Only aarch64-apple-darwin for Apple Silicon (no Intel support)
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin' || '' }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: ". -> target"
           key: ${{ inputs.platform }}-${{ inputs.target }}-vulkan-v2
@@ -133,7 +135,7 @@ jobs:
 
       - name: Install Vulkan SDK (Windows)
         if: contains(inputs.platform, 'windows')
-        uses: humbletim/install-vulkan-sdk@v1.2
+        uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
         with:
           version: 1.4.309.0
           cache: true
@@ -269,9 +271,8 @@ jobs:
               Write-Host "  Certificate Subject: $($testCert.Subject)"
               Write-Host "  Certificate Thumbprint: $($testCert.Thumbprint)"
             } catch {
-              Write-Warning "⚠ Certificate validation failed"
-              Write-Warning "Error: $($_.Exception.Message)"
-              Write-Warning "This may cause issues with signing, but we'll continue..."
+              Write-Error "Certificate validation failed: $($_.Exception.Message)"
+              exit 1
             }
           } else {
             Write-Error "Certificate file was not created at $certPath"
@@ -283,7 +284,7 @@ jobs:
 
       - name: Setup DigiCert KeyLocker
         if: contains(inputs.platform, 'windows') && inputs.sign-binaries
-        uses: digicert/ssm-code-signing@v1.1.1
+        uses: digicert/ssm-code-signing@fb61e357690ad6aaa11c372000c37fb74d35c000 # v1.1.1
 
       - name: Sync Certificate to Windows Certificate Store
         if: contains(inputs.platform, 'windows') && inputs.sign-binaries
@@ -351,8 +352,8 @@ jobs:
             Write-Host "  Valid From: $($cert.NotBefore)"
             Write-Host "  Valid Until: $($cert.NotAfter)"
           } else {
-            Write-Warning "Certificate not found in Windows Certificate Store after sync"
-            Write-Warning "Signing may fail. Continuing anyway..."
+            Write-Error "Expected certificate not found in Windows Certificate Store after sync"
+            exit 1
           }
 
           # Export keypair alias for Tauri signCommand
@@ -431,7 +432,7 @@ jobs:
       - name: Install frontend dependencies
         run: |
           cd frontend
-          pnpm install
+          pnpm install --frozen-lockfile
 
       - name: rustup install target
         if: ${{ inputs.target != '' && !contains(inputs.target, 'unknown-linux-gnu') && !contains(inputs.target, 'pc-windows-msvc') }}
@@ -561,14 +562,14 @@ jobs:
           ls -la frontend/src-tauri/binaries/
 
       - name: Cache FFmpeg binary
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: frontend/src-tauri/binaries/ffmpeg-*
           key: ${{ runner.os }}-ffmpeg-${{ hashFiles('frontend/src-tauri/build.rs', 'frontend/src-tauri/build/ffmpeg.rs') }}    
 
       - name: Build with Tauri
         id: tauri-build
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ inputs.sign-binaries && secrets.APPLE_ID || '' }}
@@ -581,21 +582,49 @@ jobs:
           # Tauri updater signing (ALWAYS enabled for .sig files)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # License validation RSA public key (embedded at build time)
-          MEETILY_RSA_PUBLIC_KEY: ${{ secrets.MEETILY_RSA_PUBLIC_KEY }}
-          # Supabase configuration (for online license verification)
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         with:
           projectPath: frontend
           tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseId: ${{ inputs.release-id }}
+          updaterJsonPreferNsis: true
           args: ${{ inputs.build-args }} ${{ steps.build-features.outputs.features }}
+
+      - name: Verify Windows updater signatures
+        if: inputs.release-id != '' && contains(inputs.platform, 'windows')
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem `
+            target/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi, `
+            target/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe
+          if ($installers.Count -ne 2) {
+            throw "Expected one MSI and one NSIS installer, found $($installers.Count)"
+          }
+          foreach ($installer in $installers) {
+            $signature = "$($installer.FullName).sig"
+            if (-not (Test-Path $signature -PathType Leaf)) {
+              throw "Missing updater signature: $signature"
+            }
+            cargo run --release -p briefli --example verify_updater_signature --locked -- `
+              $installer.FullName `
+              $signature `
+              frontend/src-tauri/tauri.conf.json
+            if ($LASTEXITCODE -ne 0) {
+              throw "Updater signature verification failed for $($installer.Name)"
+            }
+          }
+
+      - name: Attest Windows release provenance
+        if: inputs.release-id != '' && contains(inputs.platform, 'windows')
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: |
+            target/${{ steps.build-profile.outputs.profile }}/bundle/msi/*.msi
+            target/${{ steps.build-profile.outputs.profile }}/bundle/nsis/*.exe
 
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |
@@ -658,7 +687,7 @@ jobs:
 
       - name: Upload artifacts (Linux)
         if: inputs.upload-artifacts && contains(inputs.platform, 'ubuntu')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.platform }}-${{ inputs.target }}
           path: |
@@ -669,7 +698,7 @@ jobs:
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |

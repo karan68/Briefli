@@ -1,6 +1,6 @@
 [package]
 name = "briefli"
-version = "0.5.0-beta.1"
+version = "0.5.0-beta.2"
 description = "A private, source-backed meeting record"
 authors = ["Briefli contributors"]
 license = "MIT"

@@ -1,6 +1,13 @@
 name: PR Quality Gate
 
 on:
+  workflow_call:
+    inputs:
+      policy-base-ref:
+        description: Git ref used to detect modified historical migrations outside pull requests
+        required: false
+        type: string
+        default: HEAD~1
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
@@ -23,27 +30,54 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
 
+      - name: Resolve migration policy baseline
+        id: policy-base
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          POLICY_BASE_REF: ${{ inputs.policy-base-ref || 'HEAD~1' }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PR_BASE_SHA" ]]; then
+            base_sha="$PR_BASE_SHA"
+          elif [[ "$POLICY_BASE_REF" == "root-commit" ]]; then
+            mapfile -t roots < <(git rev-list --max-parents=0 HEAD)
+            if [[ "${#roots[@]}" -ne 1 ]]; then
+              echo "ERROR: Expected exactly one root commit, found ${#roots[@]}"
+              exit 1
+            fi
+            base_sha="${roots[0]}"
+          elif [[ "$POLICY_BASE_REF" == "latest-tag" ]]; then
+            if base_sha=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null); then
+              :
+            else
+              base_sha=$(git rev-parse HEAD~1)
+            fi
+          else
+            base_sha=$(git rev-parse "$POLICY_BASE_REF")
+          fi
+          git cat-file -e "${base_sha}^{commit}"
+          echo "base-sha=$base_sha" >> "$GITHUB_OUTPUT"
+
       - name: Validate append-only migrations and public-safe files
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ steps.policy-base.outputs.base-sha }}
         run: node .github/scripts/pr-policy-check.mjs
 
       - name: Test PR policy checker
         run: node --test .github/scripts/pr-policy-check.test.mjs
 
       - name: Validate workflow YAML
-        uses: docker://rhysd/actionlint:latest
-        with:
-          args: .github/workflows/pr-quality-gate.yml
+        uses: docker://rhysd/actionlint@sha256:9d36088643581e728c969f35141f88139fec77280b2be23c1f66f8e40e1025e7 # 1.7.12 linux/amd64
 
   frontend:
     name: ci / frontend
@@ -54,23 +88,23 @@ jobs:
         working-directory: frontend
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9.15.9
           run_install: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.14'
 
@@ -108,7 +142,7 @@ jobs:
             sidecar-destination: frontend/src-tauri/binaries/llama-helper-aarch64-apple-darwin
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
           submodules: false
@@ -128,12 +162,12 @@ jobs:
             libxrandr-dev
 
       - name: Install Rust stable with formatting and lint tools
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           components: rustfmt, clippy
 
       - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: '. -> target'
           key: pr-${{ matrix.os }}
@@ -163,11 +197,14 @@ jobs:
 
       - name: Compile Rust library and tests
         if: runner.os != 'macOS'
-        run: cargo check -p meetily --lib --tests --locked
+        run: cargo check -p briefli --lib --tests --locked
+
+      - name: Compile updater signature verifier
+        if: runner.os == 'Linux'
+        run: cargo check -p briefli --example verify_updater_signature --locked
 
       - name: Run full Rust library tests
-        if: runner.os == 'macOS'
-        run: cargo test -p meetily --lib --locked -- --skip audio::playback_monitor::tests::test_get_output_device
+        run: cargo test -p briefli --lib --locked -- --skip audio::playback_monitor::tests::test_get_output_device
 
   integration:
     name: ci / integration
@@ -175,10 +212,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: '1.3.14'
 
@@ -221,26 +258,26 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9.15.9
           run_install: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
 
       - name: Cache Rust build
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: '. -> target'
           key: pr-windows-desktop
