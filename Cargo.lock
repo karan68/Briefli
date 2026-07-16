@@ -700,6 +700,7 @@ dependencies = [
  "lazy_static",
  "log",
  "memory-stats",
+ "minisign-verify",
  "ndarray",
  "nnnoiseless",
  "objc",

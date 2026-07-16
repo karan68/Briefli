@@ -210,6 +210,7 @@ futures-channel = "0.3.31"
 [dev-dependencies]
 tempfile = "3.3.0"
 infer = "0.15"
+minisign-verify = "0.2.5"
 criterion = { version = "0.5.1", features = ["async_tokio"] }
 memory-stats = "1.0"
 strsim = "0.10.0"
