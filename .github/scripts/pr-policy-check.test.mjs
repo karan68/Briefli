@@ -76,6 +76,56 @@ test('rejects a modified historical migration', () => {
   });
 });
 
+test('rejects a deleted historical migration', () => {
+  withRepository((root) => {
+    rmSync(join(root, 'frontend', 'src-tauri', 'migrations', '20260101000000_initial.sql'));
+    commit(root);
+    const result = policy(root);
+    assert.notEqual(result.code, 0);
+    assert.match(result.output, /migration files are immutable/i);
+  });
+});
+
+test('rejects a renamed historical migration', () => {
+  withRepository((root) => {
+    const migrations = join(root, 'frontend', 'src-tauri', 'migrations');
+    runGit(root, [
+      'mv',
+      join(migrations, '20260101000000_initial.sql'),
+      join(migrations, '20260101000001_initial.sql'),
+    ]);
+    commit(root);
+    const result = policy(root);
+    assert.notEqual(result.code, 0);
+    assert.match(result.output, /migration files are immutable/i);
+  });
+});
+
+test('rejects a migration added and then modified later in the range', () => {
+  withRepository((root) => {
+    const addedMigration = join(
+      root,
+      'frontend',
+      'src-tauri',
+      'migrations',
+      '20260102000000_add_name.sql',
+    );
+    writeFileSync(addedMigration, 'ALTER TABLE example ADD COLUMN name TEXT;\n');
+    commit(root, 'add migration');
+    const baseSha = runGit(root, ['rev-parse', 'HEAD~1']);
+    writeFileSync(addedMigration, 'ALTER TABLE example ADD COLUMN changed TEXT;\n');
+    commit(root, 'modify added migration');
+    const result = spawnSync(process.execPath, ['.github/scripts/pr-policy-check.mjs'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, BASE_SHA: baseSha },
+    });
+    const output = `${result.stdout}${result.stderr}`;
+    assert.notEqual(result.status, 0);
+    assert.match(output, /migration files are immutable/i);
+  });
+});
+
 test('rejects local databases and private keys', () => {
   withRepository((root) => {
     writeFileSync(join(root, 'meeting_minutes.sqlite'), 'not a real database');

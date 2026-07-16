@@ -11,15 +11,13 @@ use axum::{
 use dashmap::DashMap;
 use serde::Serialize;
 use sqlx::SqlitePool;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::Mutex;
 
 use super::{
     inbox::{CaptureInbox, InboxError, MAX_CHUNK_BYTES},
     protocol::{canonical_request_payload, CaptureManifest, PairDeviceRequest},
-    repository::{
-        DeviceSyncRepository, DeviceSyncRepositoryError, MobileCapture, PairedDevice,
-    },
+    repository::{DeviceSyncRepository, DeviceSyncRepositoryError, MobileCapture, PairedDevice},
     security::{sha256_hex, validate_p256_public_key, verify_p256_signature},
     session::{PairingSession, PairingSessionError},
 };
@@ -67,20 +65,17 @@ pub fn router(context: DeviceSyncServerContext) -> Router {
         .route("/v1/pair", post(pair_device))
         .route("/v1/captures", post(register_capture))
         .route("/v1/captures/:capture_id", get(capture_status))
-        .route(
-            "/v1/captures/:capture_id/chunks/:offset",
-            put(upload_chunk),
-        )
-        .route(
-            "/v1/captures/:capture_id/finalize",
-            post(finalize_capture),
-        )
+        .route("/v1/captures/:capture_id/chunks/:offset", put(upload_chunk))
+        .route("/v1/captures/:capture_id/finalize", post(finalize_capture))
         .layer(DefaultBodyLimit::max(MAX_CHUNK_BYTES))
         .with_state(context)
 }
 
 async fn health() -> Json<HashMap<&'static str, &'static str>> {
-    Json(HashMap::from([("status", "ok"), ("service", "briefli-sync")]))
+    Json(HashMap::from([
+        ("status", "ok"),
+        ("service", "briefli-sync"),
+    ]))
 }
 
 async fn pair_device(
@@ -136,14 +131,10 @@ async fn register_capture(
         .map_err(ApiError::from_inbox)?;
     let inbox_path = paths.partial.to_string_lossy().to_string();
 
-    let outcome = DeviceSyncRepository::register_capture(
-        &context.pool,
-        &device.id,
-        &manifest,
-        &inbox_path,
-    )
-    .await
-    .map_err(ApiError::from_repository)?;
+    let outcome =
+        DeviceSyncRepository::register_capture(&context.pool, &device.id, &manifest, &inbox_path)
+            .await
+            .map_err(ApiError::from_repository)?;
 
     match outcome {
         super::repository::RegistrationOutcome::Created(capture) => {
@@ -168,12 +159,11 @@ async fn capture_status(
         let inbox = context.inbox.clone();
         let id = capture.id.clone();
         let extension = capture.file_extension.clone();
-        let actual_bytes = tokio::task::spawn_blocking(move || {
-            inbox.received_bytes(&id, &extension)
-        })
-        .await
-        .map_err(|_| ApiError::internal("inbox_task_failed", "inbox task failed"))?
-        .map_err(ApiError::from_inbox)?;
+        let actual_bytes =
+            tokio::task::spawn_blocking(move || inbox.received_bytes(&id, &extension))
+                .await
+                .map_err(|_| ApiError::internal("inbox_task_failed", "inbox task failed"))?
+                .map_err(ApiError::from_inbox)?;
 
         if actual_bytes != capture.bytes_received as u64 {
             let reconciled = DeviceSyncRepository::record_received_bytes(
@@ -306,7 +296,9 @@ async fn authenticate(
     let device_id = required_header(headers, HEADER_DEVICE_ID)?;
     let sequence = required_header(headers, HEADER_SEQUENCE)?
         .parse::<u64>()
-        .map_err(|_| ApiError::unauthorized("invalid_sequence", "sequence must be a positive integer"))?;
+        .map_err(|_| {
+            ApiError::unauthorized("invalid_sequence", "sequence must be a positive integer")
+        })?;
     let signature = required_header(headers, HEADER_SIGNATURE)?;
     let device = DeviceSyncRepository::get_device(&context.pool, device_id)
         .await
@@ -355,9 +347,9 @@ async fn owned_capture(
 
 fn bearer_token(headers: &HeaderMap) -> Result<&str, ApiError> {
     let authorization = required_header(headers, "authorization")?;
-    authorization.strip_prefix("Bearer ").ok_or_else(|| {
-        ApiError::unauthorized("invalid_pairing_token", "expected a bearer token")
-    })
+    authorization
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| ApiError::unauthorized("invalid_pairing_token", "expected a bearer token"))
 }
 
 fn required_header<'a>(headers: &'a HeaderMap, name: &str) -> Result<&'a str, ApiError> {
@@ -445,7 +437,9 @@ impl ApiError {
             | InboxError::InvalidChunkSize
             | InboxError::ExceedsDeclaredLength
             | InboxError::LengthMismatch { .. }
-            | InboxError::HashMismatch => Self::bad_request("invalid_capture_data", error.to_string()),
+            | InboxError::HashMismatch => {
+                Self::bad_request("invalid_capture_data", error.to_string())
+            }
             InboxError::AlreadyComplete => {
                 Self::new(StatusCode::CONFLICT, "already_complete", error.to_string())
             }
@@ -481,10 +475,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::device_sync::{
-        protocol::PROTOCOL_VERSION,
-        session::generate_pairing_session,
-    };
+    use crate::device_sync::{protocol::PROTOCOL_VERSION, session::generate_pairing_session};
 
     struct TestClient {
         device_id: String,
@@ -533,8 +524,7 @@ mod tests {
         let pool = test_pool().await;
         let temp = tempdir().unwrap();
         let now = chrono::Utc::now();
-        let materials = generate_pairing_session("127.0.0.1".parse().unwrap(), 43111, now)
-            .unwrap();
+        let materials = generate_pairing_session("127.0.0.1".parse().unwrap(), 43111, now).unwrap();
         let pairing_token = materials.pairing_token.clone();
         let app = router(DeviceSyncServerContext::new(
             pool.clone(),
@@ -645,12 +635,9 @@ mod tests {
     async fn rejects_replayed_signed_request() {
         let pool = test_pool().await;
         let temp = tempdir().unwrap();
-        let materials = generate_pairing_session(
-            "127.0.0.1".parse().unwrap(),
-            43111,
-            chrono::Utc::now(),
-        )
-        .unwrap();
+        let materials =
+            generate_pairing_session("127.0.0.1".parse().unwrap(), 43111, chrono::Utc::now())
+                .unwrap();
         let signing_key = SigningKey::random(&mut OsRng);
         let public_key = signing_key.verifying_key().to_public_key_der().unwrap();
         let device_id = "7d9a2b92-c934-42f4-9d08-744563ebf8be";

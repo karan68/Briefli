@@ -110,12 +110,15 @@ pub async fn load_recording_preferences<R: Runtime>(
         match serde_json::from_value::<RecordingPreferences>(value.clone()) {
             Ok(mut p) => {
                 info!("Loaded recording preferences from store");
-                if p.save_folder.file_name().and_then(|name| name.to_str()) == Some("meetily-recordings") {
+                if p.save_folder.file_name().and_then(|name| name.to_str())
+                    == Some("meetily-recordings")
+                {
                     if let Some(parent) = p.save_folder.parent() {
                         let briefli_folder = parent.join("Briefli Recordings");
                         if !briefli_folder.exists() {
                             if p.save_folder.exists() {
-                                if let Err(error) = std::fs::rename(&p.save_folder, &briefli_folder) {
+                                if let Err(error) = std::fs::rename(&p.save_folder, &briefli_folder)
+                                {
                                     warn!("Could not migrate legacy recordings folder: {}", error);
                                 }
                             }
@@ -399,4 +402,3 @@ pub async fn get_audio_backend_info() -> Result<Vec<BackendInfo>, String> {
         }])
     }
 }
-

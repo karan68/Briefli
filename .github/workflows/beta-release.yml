@@ -1,0 +1,546 @@
+name: Beta Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: beta-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pr-quality-gate.yml
+    with:
+      policy-base-ref: root-commit
+
+  create-release:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create-release.outputs.result }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate beta version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/devtest" ]]; then
+            echo "ERROR: Beta releases must be dispatched from devtest, got $GITHUB_REF"
+            exit 1
+          fi
+          version=$(node -p "require('./frontend/package.json').version")
+          tauri_version=$(node -p "require('./frontend/src-tauri/tauri.conf.json').version")
+          cargo_version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' frontend/src-tauri/Cargo.toml | head -1)
+          lock_version=$(awk '/name = "briefli"/{found=1; next} found && /version = /{gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
+          android_version=$(sed -n 's/.*versionName = "\([^"]*\)"/\1/p' android/app/build.gradle.kts | head -1)
+          android_version_code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\)/\1/p' android/app/build.gradle.kts | head -1)
+          updater_endpoint=$(node -p "require('./frontend/src-tauri/tauri.conf.json').plugins.updater.endpoints[0]")
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "ERROR: Beta version must use MAJOR.MINOR.PATCH-beta.NUMBER: $version"
+            exit 1
+          fi
+          if [[ "$tauri_version" != "$version" || "$cargo_version" != "$version" || "$lock_version" != "$version" || "$android_version" != "$version" ]]; then
+            echo "ERROR: desktop and Android application versions must match"
+            echo "package.json: $version"
+            echo "tauri.conf.json: $tauri_version"
+            echo "Cargo.toml: $cargo_version"
+            echo "Cargo.lock: $lock_version"
+            echo "Android versionName: $android_version"
+            exit 1
+          fi
+          if [[ ! "$android_version_code" =~ ^[1-9][0-9]*$ ]]; then
+            echo "ERROR: Android versionCode must be a positive integer"
+            exit 1
+          fi
+          if [[ "$updater_endpoint" != "https://github.com/karan68/Briefli/releases/download/beta-channel/latest.json" ]]; then
+            echo "ERROR: Beta releases must use the beta-channel updater endpoint"
+            echo "Current endpoint: $updater_endpoint"
+            exit 1
+          fi
+
+          tag="v${version}"
+          git fetch --tags
+          if git rev-parse --verify --quiet "refs/tags/${tag}"; then
+            tagged_sha=$(git rev-list -n 1 "$tag")
+            if [[ "$tagged_sha" != "$GITHUB_SHA" ]]; then
+              echo "ERROR: Tag ${tag} targets $tagged_sha, not $GITHUB_SHA. Bump the beta version."
+              exit 1
+            fi
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create or reset draft prerelease
+        id: create-release
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const tag = '${{ steps.version.outputs.tag }}'
+            const releaseName = `Briefli ${{ steps.version.outputs.version }} (Beta)`
+            const body = `## Verified Briefli beta
+
+            This prerelease includes the Briefli Windows desktop and the signed Briefli Capture Android companion. The Windows installers are **not Authenticode signed**, so Windows may display an unknown-publisher or SmartScreen warning.
+
+            The artifacts are still verifiable:
+
+            - GitHub build-provenance attestations bind each MSI/NSIS digest to this repository and GitHub-hosted workflow.
+            - The Android APK is signed with Briefli's durable Android release key and carries its own GitHub build-provenance attestation.
+            - \`SHA256SUMS.txt\` provides downloadable checksums.
+            - Tauri updater artifacts are signed with Briefli's updater key.
+            - Separate clean GitHub-hosted Windows runners install, launch, uninstall, and verify local database preservation for both NSIS and MSI before publication.
+
+            Verify a downloaded installer with GitHub CLI:
+
+            \`gh attestation verify <installer> --repo karan68/Briefli --signer-workflow karan68/Briefli/.github/workflows/build.yml --source-digest ${context.sha} --deny-self-hosted-runners\`
+
+            Compare its SHA-256 digest with \`SHA256SUMS.txt\` before running it. See the [code signing policy](https://github.com/karan68/Briefli/blob/devtest/CODE_SIGNING_POLICY.md) for the path to trusted Authenticode signing.`
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            })
+            const existing = releases.find((release) => release.tag_name === tag)
+            if (existing) {
+              if (!existing.draft) {
+                core.setFailed(`Release ${tag} is already published. Bump the beta version for another release.`)
+                return
+              }
+              if (existing.target_commitish !== context.sha) {
+                core.setFailed(`Draft ${tag} targets ${existing.target_commitish}, not ${context.sha}. Delete the stale draft or bump the version.`)
+                return
+              }
+              await github.rest.repos.updateRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: existing.id,
+                tag_name: tag,
+                target_commitish: context.sha,
+                name: releaseName,
+                body,
+                draft: true,
+                prerelease: true
+              })
+              const { data: assets } = await github.rest.repos.listReleaseAssets({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                release_id: existing.id,
+                per_page: 100
+              })
+              for (const asset of assets) {
+                await github.rest.repos.deleteReleaseAsset({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  asset_id: asset.id
+                })
+              }
+              console.log(`Reusing clean draft release with ID: ${existing.id}`)
+              return existing.id
+            }
+
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: releaseName,
+              body,
+              draft: true,
+              prerelease: true
+            })
+            console.log(`Created draft prerelease with ID: ${data.id}`)
+            return data.id
+
+  build-windows:
+    needs: create-release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: windows-latest
+      target: x86_64-pc-windows-msvc
+      build-args: ""
+      sign-binaries: false
+      asset-prefix: briefli-beta
+      upload-artifacts: false
+      release-id: ${{ needs.create-release.outputs.release-id }}
+      ref: ${{ github.sha }}
+    secrets: inherit
+
+  build-android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Setup Java 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+
+      - name: Restore Android release key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for value in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD EXPECTED_CERT_SHA256; do
+            if [[ -z "${!value:-}" ]]; then
+              echo "ERROR: $value is required for the signed Android beta"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/briefli-android-release.p12"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          chmod 600 "$keystore"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
+
+      - name: Build signed Android beta
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew
+          ./android/gradlew -p android \
+            :app:lintRelease \
+            :app:testDebugUnitTest \
+            :app:assembleRelease \
+            --no-daemon \
+            --no-configuration-cache \
+            --stacktrace
+
+      - name: Verify, name, and upload Android APK
+        id: apk
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          source_apk=$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' ! -name '*unsigned*' -print -quit)
+          if [[ -z "$source_apk" ]]; then
+            echo "ERROR: signed release APK was not produced"
+            find android/app/build/outputs/apk/release -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
+          apksigner="$ANDROID_HOME/build-tools/$build_tools/apksigner"
+          "$apksigner" verify --verbose --print-certs "$source_apk"
+          actual_digest=$("$apksigner" verify --print-certs "$source_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]')
+          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]')
+          if [[ "$actual_digest" != "$expected_digest" ]]; then
+            echo "ERROR: Android signer digest does not match the configured Briefli release key"
+            exit 1
+          fi
+          mkdir -p release-assets
+          apk="release-assets/Briefli-Companion_${VERSION}.apk"
+          cp "$source_apk" "$apk"
+          gh release upload "$TAG" "$apk" --clobber
+          echo "path=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Attest Android build provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: ${{ steps.apk.outputs.path }}
+
+  verify-android:
+    name: Verify signed Android beta
+    needs: [create-release, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - name: Setup Java 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download and verify signed APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+          EXPECTED_CERT_SHA256: ${{ vars.ANDROID_SIGNING_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "$TAG" --pattern '*.apk' --dir release-assets
+          apk=$(find release-assets -maxdepth 1 -type f -name '*.apk' -print -quit)
+          if [[ -z "$apk" ]]; then
+            echo "ERROR: Android APK is missing from the draft release"
+            exit 1
+          fi
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
+          apksigner="$ANDROID_HOME/build-tools/$build_tools/apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk"
+          actual_digest=$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]')
+          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]')
+          if [[ "$actual_digest" != "$expected_digest" ]]; then
+            echo "ERROR: downloaded APK signer digest is not the Briefli release key"
+            exit 1
+          fi
+          gh attestation verify "$apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow karan68/Briefli/.github/workflows/beta-release.yml \
+            --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners
+
+  verify-artifacts:
+    name: Verify beta artifacts
+    needs: [create-release, build-windows, build-android]
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download draft assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          gh release download $env:TAG --pattern "*.exe" --dir release-assets
+          gh release download $env:TAG --pattern "*.msi" --dir release-assets
+          gh release download $env:TAG --pattern "*.sig" --dir release-assets
+          gh release download $env:TAG --pattern "latest.json" --dir release-assets
+          gh release download $env:TAG --pattern "*.apk" --dir release-assets
+          Get-ChildItem release-assets
+
+      - name: Validate updater manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          $manifest = Get-Content release-assets/latest.json -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $env:VERSION) {
+            throw "Updater version $($manifest.version) does not match beta $env:VERSION"
+          }
+          $windowsPlatforms = $manifest.platforms.PSObject.Properties
+          $expectedWindowsPlatforms = @('windows-x86_64', 'windows-x86_64-nsis', 'windows-x86_64-msi')
+          $platformDifference = Compare-Object `
+            ($expectedWindowsPlatforms | Sort-Object) `
+            ($windowsPlatforms.Name | Sort-Object)
+          if ($platformDifference) {
+            throw "latest.json must contain exactly: $($expectedWindowsPlatforms -join ', ')"
+          }
+          $expectedUrlPrefix = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$($env:TAG)/"
+          foreach ($platform in $windowsPlatforms) {
+            if (-not $platform.Value.url -or -not $platform.Value.signature) {
+              throw "Updater entry $($platform.Name) is missing its URL or signature"
+            }
+            if (-not $platform.Value.url.StartsWith($expectedUrlPrefix, [StringComparison]::Ordinal)) {
+              throw "Updater URL must start with $expectedUrlPrefix, got $($platform.Value.url)"
+            }
+            $assetName = [uri]::UnescapeDataString([System.IO.Path]::GetFileName(([uri]$platform.Value.url).AbsolutePath))
+            $expectedExtension = if ($platform.Name -eq 'windows-x86_64-msi') { '.msi' } else { '.exe' }
+            if (-not $assetName.EndsWith($expectedExtension, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Updater entry $($platform.Name) must reference $expectedExtension, got $assetName"
+            }
+            $installerPath = Join-Path release-assets $assetName
+            if (-not (Test-Path $installerPath -PathType Leaf)) {
+              throw "Updater installer asset is missing: $assetName"
+            }
+            $signaturePath = Join-Path release-assets "$assetName.sig"
+            if (-not (Test-Path $signaturePath -PathType Leaf)) {
+              throw "Updater signature asset is missing: $assetName.sig"
+            }
+            if ($platform.Value.signature.Trim() -ne (Get-Content $signaturePath -Raw).Trim()) {
+              throw "Updater manifest signature does not match $assetName.sig"
+            }
+            cargo run -p briefli --example verify_updater_signature --locked -- `
+              $installerPath `
+              $signaturePath `
+              frontend/src-tauri/tauri.conf.json
+            if ($LASTEXITCODE -ne 0) {
+              throw "Downloaded updater signature verification failed for $assetName"
+            }
+          }
+
+      - name: Verify GitHub build provenance
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Get-ChildItem release-assets -File |
+            Where-Object { $_.Extension -in @('.exe', '.msi') } |
+            ForEach-Object {
+              gh attestation verify $_.FullName `
+                --repo $env:GITHUB_REPOSITORY `
+                --signer-workflow karan68/Briefli/.github/workflows/build.yml `
+                --source-digest $env:GITHUB_SHA `
+                --deny-self-hosted-runners
+              if ($LASTEXITCODE -ne 0) {
+                throw "Provenance verification failed for $($_.Name)"
+              }
+            }
+
+      - name: Require unsigned Authenticode status
+        shell: pwsh
+        run: |
+          Get-ChildItem release-assets -File |
+            Where-Object { $_.Extension -in @('.exe', '.msi') } |
+            ForEach-Object {
+              $signature = Get-AuthenticodeSignature $_.FullName
+              Write-Host "$($_.Name): $($signature.Status)"
+              if ($signature.Status -ne 'NotSigned') {
+                throw "Unsigned beta expected NotSigned Authenticode status for $($_.Name), got $($signature.Status)"
+              }
+            }
+
+      - name: Generate and upload SHA-256 checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          Get-ChildItem release-assets -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content SHA256SUMS.txt
+          gh release upload $env:TAG SHA256SUMS.txt --clobber
+
+  smoke-installers:
+    name: Smoke-test ${{ matrix.installer }} beta
+    needs: [create-release, build-windows]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        installer: [NSIS, MSI]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout exact release source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Download draft installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          gh release download $env:TAG --pattern "*.exe" --dir release-assets
+          gh release download $env:TAG --pattern "*.msi" --dir release-assets
+
+      - name: Verify install, launch, uninstall, and data preservation
+        shell: pwsh
+        run: ./scripts/Test-WindowsInstaller.ps1 -ArtifactsDirectory ./release-assets -InstallerType ${{ matrix.installer }}
+
+  publish-prerelease:
+    needs: [create-release, build-windows, build-android, verify-artifacts, verify-android, smoke-installers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish verified beta and update beta channel
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p channel-assets
+          mkdir -p channel-backup
+          gh release download "$TAG" --repo "$GH_REPO" --pattern latest.json --dir channel-assets
+
+          if ! gh release view beta-channel --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release create beta-channel \
+              --repo "$GH_REPO" \
+              --target "$GITHUB_SHA" \
+              --title "Briefli Beta Update Channel" \
+              --prerelease \
+              --notes "Mutable update manifest for verified Briefli beta releases. Download installers from the versioned prerelease, not this channel release."
+          fi
+          had_previous_manifest=false
+          if gh release download beta-channel --repo "$GH_REPO" --pattern latest.json --dir channel-backup 2>/dev/null; then
+            had_previous_manifest=true
+          fi
+          channel_prerelease=$(gh release view beta-channel --repo "$GH_REPO" --json isPrerelease --jq .isPrerelease)
+          channel_draft=$(gh release view beta-channel --repo "$GH_REPO" --json isDraft --jq .isDraft)
+          if [[ "$channel_prerelease" != "true" || "$channel_draft" != "false" ]]; then
+            echo "ERROR: beta-channel must remain a published prerelease"
+            exit 1
+          fi
+
+          published=false
+          rollback() {
+            if [[ "$published" == true ]]; then
+              gh release edit "$TAG" --repo "$GH_REPO" --draft --prerelease || true
+            fi
+            if [[ "$had_previous_manifest" == true ]]; then
+              gh release upload beta-channel --repo "$GH_REPO" channel-backup/latest.json --clobber || true
+            else
+              asset_id=$(gh api "repos/$GH_REPO/releases/tags/beta-channel" --jq '.assets[] | select(.name == "latest.json") | .id' 2>/dev/null || true)
+              if [[ -n "$asset_id" ]]; then
+                gh api --method DELETE "repos/$GH_REPO/releases/assets/$asset_id" || true
+              fi
+            fi
+          }
+          trap rollback ERR
+
+          gh release edit "$TAG" --repo "$GH_REPO" --draft=false --prerelease
+          published=true
+          gh release upload beta-channel --repo "$GH_REPO" channel-assets/latest.json --clobber
+          trap - ERR
+
+      - name: Add release summary
+        env:
+          TAG: ${{ needs.create-release.outputs.tag }}
+        run: |
+          {
+            echo "## Verified beta published"
+            echo ""
+            echo "Release: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+            echo ""
+            echo "The beta is provenance-attested and updater-signed, but not Authenticode signed."
+          } >> "$GITHUB_STEP_SUMMARY"

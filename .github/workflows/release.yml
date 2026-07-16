@@ -9,8 +9,16 @@ concurrency:
   cancel-in-progress: false  # Don't cancel releases, fail instead
 
 jobs:
+  quality-gate:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/pr-quality-gate.yml
+    with:
+      policy-base-ref: latest-tag
+
   # STEP 1: Create draft release first
   create-release:
+    needs: quality-gate
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -19,63 +27,79 @@ jobs:
       version: ${{ steps.get-version.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0  # Fetch all tags
 
-      - name: Get version from tauri.conf.json and check for existing tags
+      - name: Validate release version
         id: get-version
         shell: bash
         run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "ERROR: Stable releases must be dispatched from main, got $GITHUB_REF"
+            exit 1
+          fi
           BASE_VERSION=$(grep -o '"version": "[^"]*"' frontend/src-tauri/tauri.conf.json | cut -d'"' -f4)
-          echo "Base version from tauri.conf.json: $BASE_VERSION"
+          PACKAGE_VERSION=$(node -p "require('./frontend/package.json').version")
+          CARGO_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' frontend/src-tauri/Cargo.toml | head -1)
+          LOCK_VERSION=$(awk '/name = "briefli"/{found=1; next} found && /version = /{gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
+          UPDATER_ENDPOINT=$(node -p "require('./frontend/src-tauri/tauri.conf.json').plugins.updater.endpoints[0]")
 
-          # Fetch all tags
-          git fetch --tags
-
-          # Check if base version tag exists
-          if git tag -l "v${BASE_VERSION}" | grep -q .; then
-            echo "Tag v${BASE_VERSION} already exists, looking for minor updates..."
-
-            # Find all existing minor versions (e.g., 0.1.1.1, 0.1.1.2, etc.)
-            LATEST_MINOR=0
-            for i in $(seq 1 100); do
-              if git tag -l "v${BASE_VERSION}.${i}" | grep -q .; then
-                LATEST_MINOR=$i
-              else
-                break
-              fi
-            done
-
-            # Increment to next minor version
-            NEXT_MINOR=$((LATEST_MINOR + 1))
-
-            if [ $NEXT_MINOR -gt 100 ]; then
-              echo "ERROR: Maximum minor version (100) reached for ${BASE_VERSION}"
-              echo "Please update the version in tauri.conf.json"
-              exit 1
-            fi
-
-            VERSION="${BASE_VERSION}.${NEXT_MINOR}"
-            echo "Using minor update version: $VERSION"
-          else
-            VERSION="${BASE_VERSION}"
-            echo "Using base version: $VERSION"
+          if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: Release version must use MAJOR.MINOR.PATCH: $BASE_VERSION"
+            exit 1
           fi
 
-          echo "Final version: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [[ "$PACKAGE_VERSION" != "$BASE_VERSION" || "$CARGO_VERSION" != "$BASE_VERSION" || "$LOCK_VERSION" != "$BASE_VERSION" ]]; then
+            echo "ERROR: Application versions do not match"
+            echo "tauri.conf.json: $BASE_VERSION"
+            echo "package.json: $PACKAGE_VERSION"
+            echo "Cargo.toml: $CARGO_VERSION"
+            echo "Cargo.lock: $LOCK_VERSION"
+            exit 1
+          fi
+          if [[ "$UPDATER_ENDPOINT" != "https://github.com/karan68/Briefli/releases/latest/download/latest.json" ]]; then
+            echo "ERROR: Stable releases must use the stable /releases/latest/ updater endpoint"
+            echo "Current endpoint: $UPDATER_ENDPOINT"
+            exit 1
+          fi
 
-      - name: Create Draft Release
+          git fetch --tags
+          if git rev-parse --verify --quiet "refs/tags/v${BASE_VERSION}"; then
+            echo "ERROR: Tag v${BASE_VERSION} already exists. Bump the application version before releasing."
+            exit 1
+          fi
+
+          echo "Release version: $BASE_VERSION"
+          echo "version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create or reuse Draft Release
         id: create-release
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
+            const tag = `v${{ steps.get-version.outputs.version }}`
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            })
+            const existing = releases.find((release) => release.draft && release.tag_name === tag)
+            if (existing) {
+              if (existing.target_commitish !== context.sha) {
+                core.setFailed(`Draft ${tag} targets ${existing.target_commitish}, not ${context.sha}. Delete the stale draft or bump the version.`)
+                return
+              }
+              console.log(`Reusing draft release with ID: ${existing.id}`)
+              return existing.id
+            }
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: `v${{ steps.get-version.outputs.version }}`,
-              name: `Meetily v${{ steps.get-version.outputs.version }}`,
+              tag_name: tag,
+              target_commitish: context.sha,
+              name: `Briefli v${{ steps.get-version.outputs.version }}`,
               draft: true,
               prerelease: false,
               generate_release_notes: true
@@ -83,37 +107,166 @@ jobs:
             console.log(`Created draft release with ID: ${data.id}`)
             return data.id
 
-  # STEP 2: Build all platforms and upload directly to release
-  # Note: Linux builds are excluded from release (only macOS and Windows)
-  build-all-platforms:
+  # STEP 2: Build the supported Windows release and upload it directly
+  build-windows:
     needs: create-release
     permissions:
       contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: windows-latest
+      target: x86_64-pc-windows-msvc
+      build-args: ""
+      sign-binaries: true
+      asset-prefix: "briefli"
+      upload-artifacts: false  # tauri-action uploads directly to release
+      release-id: ${{ needs.create-release.outputs.release-id }}
+      ref: ${{ github.sha }}
+    secrets: inherit
+
+  verify-artifacts:
+    name: Verify signed release artifacts
+    needs: [create-release, build-windows]
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download Windows release installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          gh release download "v$env:VERSION" --pattern "*.exe" --dir release-assets
+          gh release download "v$env:VERSION" --pattern "*.msi" --dir release-assets
+          gh release download "v$env:VERSION" --pattern "*.sig" --dir release-assets
+          gh release download "v$env:VERSION" --pattern "latest.json" --dir release-assets
+          Get-ChildItem release-assets
+
+      - name: Validate updater manifest
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.create-release.outputs.version }}
+          TAG: v${{ needs.create-release.outputs.version }}
+        run: |
+          $manifest = Get-Content release-assets/latest.json -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $env:VERSION) {
+            throw "Updater version $($manifest.version) does not match release $env:VERSION"
+          }
+          $windowsPlatforms = $manifest.platforms.PSObject.Properties
+          $expectedWindowsPlatforms = @('windows-x86_64', 'windows-x86_64-nsis', 'windows-x86_64-msi')
+          $platformDifference = Compare-Object `
+            ($expectedWindowsPlatforms | Sort-Object) `
+            ($windowsPlatforms.Name | Sort-Object)
+          if ($platformDifference) {
+            throw "latest.json must contain exactly: $($expectedWindowsPlatforms -join ', ')"
+          }
+          $expectedUrlPrefix = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$($env:TAG)/"
+          foreach ($platform in $windowsPlatforms) {
+            if (-not $platform.Value.url -or -not $platform.Value.signature) {
+              throw "Updater entry $($platform.Name) is missing its URL or signature"
+            }
+            if (-not $platform.Value.url.StartsWith($expectedUrlPrefix, [StringComparison]::Ordinal)) {
+              throw "Updater URL must start with $expectedUrlPrefix, got $($platform.Value.url)"
+            }
+            $assetName = [uri]::UnescapeDataString([System.IO.Path]::GetFileName(([uri]$platform.Value.url).AbsolutePath))
+            $expectedExtension = if ($platform.Name -eq 'windows-x86_64-msi') { '.msi' } else { '.exe' }
+            if (-not $assetName.EndsWith($expectedExtension, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Updater entry $($platform.Name) must reference $expectedExtension, got $assetName"
+            }
+            $installerPath = Join-Path release-assets $assetName
+            if (-not (Test-Path $installerPath -PathType Leaf)) {
+              throw "Updater installer asset is missing: $assetName"
+            }
+            $signaturePath = Join-Path release-assets "$assetName.sig"
+            if (-not (Test-Path $signaturePath -PathType Leaf)) {
+              throw "Updater signature asset is missing: $assetName.sig"
+            }
+            if ($platform.Value.signature.Trim() -ne (Get-Content $signaturePath -Raw).Trim()) {
+              throw "Updater manifest signature does not match $assetName.sig"
+            }
+            cargo run -p briefli --example verify_updater_signature --locked -- `
+              $installerPath `
+              $signaturePath `
+              frontend/src-tauri/tauri.conf.json
+            if ($LASTEXITCODE -ne 0) {
+              throw "Downloaded updater signature verification failed for $assetName"
+            }
+          }
+
+      - name: Verify GitHub build provenance
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Get-ChildItem release-assets -File |
+            Where-Object { $_.Extension -in @('.exe', '.msi') } |
+            ForEach-Object {
+              gh attestation verify $_.FullName `
+                --repo $env:GITHUB_REPOSITORY `
+                --signer-workflow karan68/Briefli/.github/workflows/build.yml `
+                --source-digest $env:GITHUB_SHA `
+                --deny-self-hosted-runners
+              if ($LASTEXITCODE -ne 0) {
+                throw "Provenance verification failed for $($_.Name)"
+              }
+            }
+
+      - name: Generate and upload SHA-256 checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          Get-ChildItem release-assets -File |
+            Sort-Object Name |
+            ForEach-Object {
+              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              "$hash  $($_.Name)"
+            } | Set-Content SHA256SUMS.txt
+          gh release upload "v$env:VERSION" SHA256SUMS.txt --clobber
+
+  smoke-installers:
+    name: Smoke-test signed ${{ matrix.installer }}
+    needs: [create-release, build-windows]
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: "macos-latest" # for Apple Silicon only (M1 and above)
-            args: "--target aarch64-apple-darwin"
-            target: "aarch64-apple-darwin"
-          - platform: "windows-latest"
-            args: ""
-            target: "x86_64-pc-windows-msvc"
+        installer: [NSIS, MSI]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-    uses: ./.github/workflows/build.yml
-    with:
-      platform: ${{ matrix.platform }}
-      target: ${{ matrix.target }}
-      build-args: ${{ matrix.args }}
-      sign-binaries: true
-      asset-prefix: "meetily"
-      upload-artifacts: false  # tauri-action uploads directly to release
-      release-id: ${{ needs.create-release.outputs.release-id }}
-    secrets: inherit
+      - name: Download Windows release installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.create-release.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          gh release download "v$env:VERSION" --pattern "*.exe" --dir release-assets
+          gh release download "v$env:VERSION" --pattern "*.msi" --dir release-assets
+
+      - name: Verify signed install, launch, uninstall, and data preservation
+        shell: pwsh
+        env:
+          EXPECTED_SIGNER_THUMBPRINT: ${{ secrets.SM_CODE_SIGNING_CERT_SHA1_HASH }}
+        run: ./scripts/Test-WindowsInstaller.ps1 -ArtifactsDirectory ./release-assets -InstallerType ${{ matrix.installer }} -RequireSignature -ExpectedSignerThumbprint $env:EXPECTED_SIGNER_THUMBPRINT
 
   # STEP 3: Show release summary
   release-summary:
-    needs: [create-release, build-all-platforms]
+    needs: [create-release, build-windows, verify-artifacts, smoke-installers]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -151,7 +304,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Download all as ZIP:** https://github.com/${{ github.repository }}/archive/refs/tags/v${VERSION}.zip" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Manual S3 upload:** Download latest.json from release and upload to \`s3://meetily-updates/latest.json\`" >> $GITHUB_STEP_SUMMARY
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,7 +316,6 @@ jobs:
           echo "Release URL: https://github.com/${{ github.repository }}/releases/tag/v${{ needs.create-release.outputs.version }}"
           echo ""
           echo "Uploaded assets (via tauri-action):"
-          echo "  - macOS: DMG installer + app.tar.gz (for updater) + .sig"
           echo "  - Windows: MSI + NSIS installers (SIGNED via signCommand) + .sig files"
           echo "  - Updater manifest: latest.json (auto-generated by tauri-action)"
           echo ""
@@ -185,7 +336,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Platform | Assets |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **macOS** | DMG installer, app.tar.gz (updater), .sig |" >> $GITHUB_STEP_SUMMARY
           echo "| **Windows** | MSI installer (SIGNED), NSIS installer (SIGNED), .sig files |" >> $GITHUB_STEP_SUMMARY
           echo "| **Updater** | latest.json manifest (auto-generated by tauri-action) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

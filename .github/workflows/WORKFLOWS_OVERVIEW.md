@@ -131,7 +131,7 @@ Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs
 - All platforms in parallel
 - Uses reusable `build.yml` workflow
 - 30-day artifact retention
-- Artifacts prefixed with `meetily-test-`
+- Artifacts prefixed with `briefli-test-`
 
 **Triggers:**
 - Manual dispatch only
@@ -149,23 +149,22 @@ Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs
 **Key Features:**
 - Reusable workflow (called by others)
 - Highly configurable inputs
-- Used by `build-test.yml` and `release.yml`
+- Used by test, beta, and stable release workflows
 
 **Not directly triggered** - used as a building block
 
 ---
 
 ### 7. **release.yml** - Production Release
-**Purpose:** Create official releases with signed binaries
+**Purpose:** Create official stable Windows releases
 
 **Key Features:**
 - Signing REQUIRED
 - Creates GitHub Release (draft)
-- Version tags from `tauri.conf.json`
-- Uploads release assets
-- **macOS and Windows only** (Linux excluded from production releases)
+- Requires matching stable versions across package, Cargo, lock, and Tauri configuration
+- Builds and smoke-tests Windows x64 MSI and NSIS installers
+- Verifies Authenticode, updater signatures, provenance, and checksums
 - Auto-generates `latest.json` for Tauri updater
-- **Auto-increment versioning**: If tag exists, auto-increments (e.g., `0.1.1` -> `0.1.1.1` -> `0.1.1.2`, up to `.100`)
 
 **Triggers:**
 - Manual dispatch only
@@ -176,22 +175,38 @@ Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs
 
 **Outputs:**
 - GitHub Release (draft)
-- macOS: DMG installer, app.tar.gz (updater), .sig
 - Windows: MSI installer (signed), NSIS installer (signed), .sig files
 - Updater manifest: latest.json
-- Release notes auto-generated
+- SHA256SUMS.txt and GitHub build-provenance attestations
 
 **Version Behavior:**
-- If `v0.1.1` tag doesn't exist: creates `v0.1.1`
-- If `v0.1.1` exists: creates `v0.1.1.1`
-- If `v0.1.1.1` exists: creates `v0.1.1.2`
-- Maximum: `v0.1.1.100` (then update `tauri.conf.json`)
+- Stable versions use `MAJOR.MINOR.PATCH`.
+- Existing tags are never reused or auto-incremented; bump all version fields first.
 
 **Note:** Linux builds are not included in releases. Use `build-linux.yml` for Linux testing.
 
 ---
 
-### 8. **pr-main-check.yml** - Validation Check
+### 8. **beta-release.yml** - Verified Beta Release
+**Purpose:** Publish verified prereleases from `devtest`
+
+**Key Features:**
+- Requires matching `MAJOR.MINOR.PATCH-beta.NUMBER` versions
+- Builds unsigned Windows x64 MSI and NSIS installers with updater signatures
+- Builds the R8-minified Android companion APK with the durable release key
+- Verifies installer smoke tests, Android signer identity, provenance, and checksums
+- Publishes only after every verification job succeeds
+- Updates the separate `beta-channel/latest.json` updater manifest
+
+**Outputs:**
+- Windows MSI and NSIS installers plus updater signatures
+- Signed `Briefli-Companion_<version>.apk`
+- `latest.json` and `SHA256SUMS.txt`
+- GitHub build-provenance attestations
+
+---
+
+### 9. **pr-main-check.yml** - Validation Check
 **Purpose:** Quick validation of version and configuration
 
 **Key Features:**
@@ -252,7 +267,7 @@ Most build and release workflows use manual triggers. `pr-quality-gate.yml` runs
 ### "I'm ready to release..."
 - **Use `release.yml`** (manual dispatch)
 - Creates GitHub Release
-- All platforms, fully signed
+- Windows x64, fully signed
 - Production-ready artifacts
 
 ---
@@ -283,20 +298,20 @@ Standalone (don't use build.yml):
 | `build-windows.yml` | Windows | Optional | Medium | 30 days | Windows dev |
 | `build-linux.yml` | Linux | Optional | Medium | 30 days | Linux dev |
 | `build-test.yml` | All | ON | Slow | 30 days | Pre-release |
-| `release.yml` | macOS + Windows | REQUIRED | Slow | Permanent | Release |
+| `release.yml` | Windows | REQUIRED | Slow | Permanent | Release |
 
 ---
 
 ## Artifact Naming Convention
 
 ```
-meetily-{workflow}-{platform}-{target}-{version}
+briefli-{workflow}-{platform}-{target}-{version}
 ```
 
 **Examples:**
-- `meetily-devtest-macOS-aarch64-apple-darwin-0.1.3`
-- `meetily-test-windows-x86_64-pc-windows-msvc-0.1.3`
-- `meetily-macos-aarch64-release-0.1.3`
+- `briefli-devtest-macOS-aarch64-apple-darwin-0.5.0`
+- `briefli-test-windows-x86_64-pc-windows-msvc-0.5.0`
+- `briefli-macos-aarch64-release-0.5.0`
 
 ---
 
@@ -322,11 +337,6 @@ All workflows require these secrets to be configured:
 ### Tauri Updater (All Platforms)
 - `TAURI_SIGNING_PRIVATE_KEY` - Ed25519 private key
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` - Key password
-
-### Application Configuration
-- `MEETILY_RSA_PUBLIC_KEY` - License validation public key
-- `SUPABASE_URL` - Online license verification
-- `SUPABASE_ANON_KEY` - Supabase anonymous key
 
 ---
 

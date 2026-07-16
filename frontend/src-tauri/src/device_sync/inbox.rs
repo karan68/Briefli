@@ -159,11 +159,7 @@ impl CaptureInbox {
     ) -> Result<PathBuf, InboxError> {
         let paths = self.paths_for(capture_id, file_extension)?;
         if paths.completed.exists() {
-            verify_file(
-                &paths.completed,
-                expected_length,
-                expected_sha256,
-            )?;
+            verify_file(&paths.completed, expected_length, expected_sha256)?;
             return Ok(paths.completed);
         }
 
@@ -174,11 +170,7 @@ impl CaptureInbox {
     }
 }
 
-fn verify_file(
-    path: &Path,
-    expected_length: u64,
-    expected_sha256: &str,
-) -> Result<(), InboxError> {
+fn verify_file(path: &Path, expected_length: u64, expected_sha256: &str) -> Result<(), InboxError> {
     let mut file = File::open(path)?;
     let actual_length = file.metadata()?.len();
     if actual_length != expected_length {
@@ -269,8 +261,14 @@ mod tests {
             .append_chunk(CAPTURE_ID, "m4a", 8, 10, b"xx")
             .unwrap_err();
 
-        assert!(matches!(stale, InboxError::OffsetMismatch { actual: 5, .. }));
-        assert!(matches!(skipped, InboxError::OffsetMismatch { actual: 5, .. }));
+        assert!(matches!(
+            stale,
+            InboxError::OffsetMismatch { actual: 5, .. }
+        ));
+        assert!(matches!(
+            skipped,
+            InboxError::OffsetMismatch { actual: 5, .. }
+        ));
         assert_eq!(inbox.received_bytes(CAPTURE_ID, "m4a").unwrap(), 5);
     }
 

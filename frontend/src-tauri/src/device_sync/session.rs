@@ -116,8 +116,8 @@ pub fn generate_pairing_session(
         pairing_token,
         expires_at: expires_at.to_rfc3339(),
     };
-    let encoded_payload = serde_json::to_vec(&payload)
-        .map_err(|_| PairingSessionError::PayloadSerialization)?;
+    let encoded_payload =
+        serde_json::to_vec(&payload).map_err(|_| PairingSessionError::PayloadSerialization)?;
     let code = QrCode::new(encoded_payload).map_err(|_| PairingSessionError::QrEncoding)?;
     let qr_svg = code
         .render::<svg::Color>()
@@ -156,12 +156,9 @@ mod tests {
         let now = DateTime::parse_from_rfc3339("2026-07-15T12:00:00Z")
             .unwrap()
             .with_timezone(&Utc);
-        let materials = generate_pairing_session(
-            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)),
-            43111,
-            now,
-        )
-        .unwrap();
+        let materials =
+            generate_pairing_session(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 20)), 43111, now)
+                .unwrap();
 
         assert!(!materials.certificate_der.is_empty());
         assert!(!materials.private_key_der.is_empty());
@@ -174,12 +171,8 @@ mod tests {
     #[test]
     fn token_is_valid_once_before_expiry() {
         let now = Utc::now();
-        let mut materials = generate_pairing_session(
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            43111,
-            now,
-        )
-        .unwrap();
+        let mut materials =
+            generate_pairing_session(IpAddr::V4(Ipv4Addr::LOCALHOST), 43111, now).unwrap();
 
         let token = materials.pairing_token.clone();
         assert_eq!(materials.pairing.verify_and_consume(&token, now), Ok(()));
@@ -192,12 +185,8 @@ mod tests {
     #[test]
     fn rejects_wrong_or_expired_token() {
         let now = Utc::now();
-        let mut wrong_token_materials = generate_pairing_session(
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            43111,
-            now,
-        )
-        .unwrap();
+        let mut wrong_token_materials =
+            generate_pairing_session(IpAddr::V4(Ipv4Addr::LOCALHOST), 43111, now).unwrap();
         assert_eq!(
             wrong_token_materials
                 .pairing
@@ -205,12 +194,8 @@ mod tests {
             Err(PairingSessionError::InvalidToken)
         );
 
-        let mut expired_materials = generate_pairing_session(
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            43111,
-            now,
-        )
-        .unwrap();
+        let mut expired_materials =
+            generate_pairing_session(IpAddr::V4(Ipv4Addr::LOCALHOST), 43111, now).unwrap();
         let token = expired_materials.pairing_token.clone();
         assert_eq!(
             expired_materials
@@ -219,5 +204,4 @@ mod tests {
             Err(PairingSessionError::Expired)
         );
     }
-
 }

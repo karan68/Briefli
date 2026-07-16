@@ -8,8 +8,8 @@ use std::{
 use axum_server::{tls_rustls::RustlsConfig, Handle};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::state::AppState;
@@ -83,12 +83,10 @@ pub async fn start_device_sync_session(
 
     let materials = generate_pairing_session(IpAddr::V4(local_ip), port, chrono::Utc::now())
         .map_err(|error| format!("Failed to create pairing session: {error}"))?;
-    let tls_config = RustlsConfig::from_der(
-        vec![materials.certificate_der],
-        materials.private_key_der,
-    )
-    .await
-    .map_err(|error| format!("Failed to configure sync encryption: {error}"))?;
+    let tls_config =
+        RustlsConfig::from_der(vec![materials.certificate_der], materials.private_key_der)
+            .await
+            .map_err(|error| format!("Failed to configure sync encryption: {error}"))?;
 
     let app_state = app
         .try_state::<AppState>()
@@ -186,10 +184,7 @@ pub async fn get_device_sync_status(
 }
 
 #[tauri::command]
-pub async fn unpair_device_sync_phone(
-    app: AppHandle,
-    device_id: String,
-) -> Result<(), String> {
+pub async fn unpair_device_sync_phone(app: AppHandle, device_id: String) -> Result<(), String> {
     uuid::Uuid::parse_str(&device_id).map_err(|_| "Invalid paired phone ID".to_string())?;
     let app_state = app
         .try_state::<AppState>()
@@ -254,7 +249,11 @@ async fn run_import_worker(
             Ok(Some(capture)) if capture.status == "received" => capture,
             Ok(_) => continue,
             Err(error) => {
-                log::error!("Failed to load queued phone capture {}: {}", capture_id, error);
+                log::error!(
+                    "Failed to load queued phone capture {}: {}",
+                    capture_id,
+                    error
+                );
                 continue;
             }
         };
@@ -274,7 +273,11 @@ async fn run_import_worker(
         }
 
         if let Err(error) = DeviceSyncRepository::mark_importing(&pool, &capture.id).await {
-            log::error!("Failed to claim phone capture {} for import: {}", capture.id, error);
+            log::error!(
+                "Failed to claim phone capture {} for import: {}",
+                capture.id,
+                error
+            );
             continue;
         }
 
@@ -297,10 +300,8 @@ async fn run_import_worker(
                     capture.id,
                     imported.meeting_id
                 );
-                if let Err(error) = app.emit(
-                    "phone-capture-imported",
-                    imported.meeting_id.clone(),
-                ) {
+                if let Err(error) = app.emit("phone-capture-imported", imported.meeting_id.clone())
+                {
                     log::warn!(
                         "Phone capture {} imported but the meeting list refresh event failed: {}",
                         capture.id,
@@ -310,12 +311,8 @@ async fn run_import_worker(
             }
             Err(error) => {
                 let message = error.to_string();
-                if let Err(status_error) = DeviceSyncRepository::mark_import_failed(
-                    &pool,
-                    &capture.id,
-                    &message,
-                )
-                .await
+                if let Err(status_error) =
+                    DeviceSyncRepository::mark_import_failed(&pool, &capture.id, &message).await
                 {
                     log::error!(
                         "Phone capture {} import failed and status update also failed: {}",
@@ -348,7 +345,10 @@ async fn configured_transcription_model(
         }
         Ok(None) => (None, None),
         Err(error) => {
-            log::warn!("Failed to read transcription config for phone import: {}", error);
+            log::warn!(
+                "Failed to read transcription config for phone import: {}",
+                error
+            );
             (None, None)
         }
     }

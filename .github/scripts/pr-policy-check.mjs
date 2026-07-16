@@ -45,25 +45,26 @@ function changedFiles() {
     .filter(Boolean);
 }
 
-function modifiedHistoricalMigrations() {
+function changedHistoricalMigrations() {
   if (!baseSha) return [];
-  return git([
-    'diff',
-    '--name-only',
-    '--diff-filter=M',
-    `${baseSha}...HEAD`,
-    '--',
+  const endpointChanges = git([
+    'diff', '--name-only', '--diff-filter=DMR', `${baseSha}..HEAD`, '--',
     'frontend/src-tauri/migrations/*.sql',
-  ])
+  ]);
+  const historicalChanges = git([
+    'log', '--format=', '--name-only', '--diff-filter=DMR', `${baseSha}..HEAD`, '--',
+    'frontend/src-tauri/migrations/*.sql',
+  ]);
+  return [...new Set(`${endpointChanges}\n${historicalChanges}`
     .split(/\r?\n/)
-    .filter(Boolean);
+    .filter(Boolean))];
 }
 
 const failures = [];
-const modifiedMigrations = modifiedHistoricalMigrations();
-if (modifiedMigrations.length > 0) {
+const changedMigrations = changedHistoricalMigrations();
+if (changedMigrations.length > 0) {
   failures.push(
-    `Applied migration files are immutable; add a new migration instead:\n${modifiedMigrations
+    `Applied migration files are immutable; do not modify, delete, or rename them. Add a new migration instead:\n${changedMigrations
       .map((file) => `  - ${file}`)
       .join('\n')}`,
   );
