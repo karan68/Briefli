@@ -13,6 +13,7 @@ import {
   type TimelineMarker,
 } from '@/lib/meeting-timeline';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { invoke } from '@tauri-apps/api/core';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -85,12 +86,8 @@ export function TranscriptPanel({
   const [activeSegmentId, setActiveSegmentId] = useState<string | null>(null);
   const [isTimelineOpen, setIsTimelineOpen] = useState(true);
 
-  // Resolve the finalized meeting recording (saved as `audio.mp4` in the
-  // meeting folder) so it can be played back and seeked from the timeline.
-  // Note: recordings live outside the app's data dir (e.g. ~/Music), so we do
-  // not use the permission-scoped `plugin-fs` here. We build the path and let
-  // the audio loader (`read_audio_file`) report whether it can be read; the
-  // player is only shown once the audio loads successfully.
+  // Resolve the finalized meeting recording through the backend so recordings
+  // and imports use the same supported-format discovery rules.
   const [audioPath, setAudioPath] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -100,9 +97,10 @@ export function TranscriptPanel({
         return;
       }
       try {
-        const { join } = await import('@tauri-apps/api/path');
-        const candidate = await join(meetingFolderPath, 'audio.mp4');
-        if (!cancelled) setAudioPath(candidate);
+        const resolved = await invoke<string>('resolve_meeting_audio_file_command', {
+          meetingFolderPath,
+        });
+        if (!cancelled) setAudioPath(resolved);
       } catch {
         if (!cancelled) setAudioPath(null);
       }

@@ -4,6 +4,7 @@ use crate::api::TranscriptSegment;
 use crate::audio::decoder::{decode_audio_file, decode_audio_file_with_progress};
 use crate::audio::vad::get_speech_chunks_with_progress;
 use crate::config::{DEFAULT_WHISPER_MODEL, DEFAULT_PARAKEET_MODEL};
+use crate::device_sync::repository::DeviceSyncRepository;
 use crate::parakeet_engine::ParakeetEngine;
 use crate::state::AppState;
 use crate::whisper_engine::WhisperEngine;
@@ -259,6 +260,54 @@ pub async fn start_import<R: Runtime>(
     model: Option<String>,
     provider: Option<String>,
 ) -> Result<ImportResult> {
+    start_import_job(
+        app,
+        None,
+        source_path,
+        title,
+        language,
+        model,
+        provider,
+        true,
+        "import",
+    )
+    .await
+}
+
+pub async fn start_phone_sync_import<R: Runtime>(
+    app: AppHandle<R>,
+    capture_id: String,
+    source_path: String,
+    title: String,
+    language: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+) -> Result<ImportResult> {
+    start_import_job(
+        app,
+        Some(capture_id),
+        source_path,
+        title,
+        language,
+        model,
+        provider,
+        false,
+        "phone-sync",
+    )
+    .await
+}
+
+async fn start_import_job<R: Runtime>(
+    app: AppHandle<R>,
+    source_capture_id: Option<String>,
+    source_path: String,
+    title: String,
+    language: Option<String>,
+    model: Option<String>,
+    provider: Option<String>,
+    emit_frontend_events: bool,
+    source_kind: &'static str,
+) -> Result<ImportResult> {
     // Acquire guard - ensures flag is cleared even on panic/early return
     let _guard = ImportGuard::acquire().map_err(|e| anyhow!(e))?;
 
@@ -268,11 +317,14 @@ pub async fn start_import<R: Runtime>(
     let use_parakeet = provider.as_deref() == Some("parakeet");
     let result = run_import(
         app.clone(),
+        source_capture_id,
         source_path,
         title,
         language,
         model,
         provider,
+        emit_frontend_events,
+        source_kind,
     )
     .await;
 
@@ -282,25 +334,27 @@ pub async fn start_import<R: Runtime>(
     // Guard will automatically clear flag on drop
     // No need for manual: IMPORT_IN_PROGRESS.store(false, Ordering::SeqCst);
 
-    match &result {
-        Ok(res) => {
-            let _ = app.emit(
-                "import-complete",
-                serde_json::json!({
-                    "meeting_id": res.meeting_id,
-                    "title": res.title,
-                    "segments_count": res.segments_count,
-                    "duration_seconds": res.duration_seconds
-                }),
-            );
-        }
-        Err(e) => {
-            let _ = app.emit(
-                "import-error",
-                ImportError {
-                    error: e.to_string(),
-                },
-            );
+    if emit_frontend_events {
+        match &result {
+            Ok(res) => {
+                let _ = app.emit(
+                    "import-complete",
+                    serde_json::json!({
+                        "meeting_id": res.meeting_id,
+                        "title": res.title,
+                        "segments_count": res.segments_count,
+                        "duration_seconds": res.duration_seconds
+                    }),
+                );
+            }
+            Err(e) => {
+                let _ = app.emit(
+                    "import-error",
+                    ImportError {
+                        error: e.to_string(),
+                    },
+                );
+            }
         }
     }
 
@@ -310,11 +364,14 @@ pub async fn start_import<R: Runtime>(
 /// Internal function to run import
 async fn run_import<R: Runtime>(
     app: AppHandle<R>,
+    source_capture_id: Option<String>,
     source_path: String,
     title: String,
     language: Option<String>,
     model: Option<String>,
     provider: Option<String>,
+    emit_frontend_events: bool,
+    source_kind: &'static str,
 ) -> Result<ImportResult> {
     let source = PathBuf::from(&source_path);
 
@@ -331,7 +388,7 @@ async fn run_import<R: Runtime>(
     // Determine which provider to use (default to whisper)
     let use_parakeet = provider.as_deref() == Some("parakeet");
 
-    emit_progress(&app, "copying", 5, "Creating meeting folder...");
+    emit_progress(&app, emit_frontend_events, "copying", 5, "Creating meeting folder...");
 
     // Check for cancellation
     if IMPORT_CANCELLED.load(Ordering::SeqCst) {
@@ -343,7 +400,7 @@ async fn run_import<R: Runtime>(
     let meeting_folder = create_meeting_folder(&base_folder, &title, false)?;
 
     // Copy audio file to meeting folder
-    emit_progress(&app, "copying", 10, "Copying audio file...");
+    emit_progress(&app, emit_frontend_events, "copying", 10, "Copying audio file...");
 
     let dest_filename = format!(
         "audio.{}",
@@ -370,14 +427,14 @@ async fn run_import<R: Runtime>(
         return Err(anyhow!("Import cancelled"));
     }
 
-    emit_progress(&app, "decoding", 15, "Decoding audio file...");
+    emit_progress(&app, emit_frontend_events, "decoding", 15, "Decoding audio file...");
 
     // Decode the audio file with progress updates
     let app_for_decode = app.clone();
     let decode_progress = Box::new(move |progress: u32, msg: &str| {
         // Map decode progress: 15% + (progress * 0.05) to go from 15% to 20%
         let overall_progress = 15 + ((progress as f32 * 0.05) as u32);
-        emit_progress(&app_for_decode, "decoding", overall_progress, msg);
+        emit_progress(&app_for_decode, emit_frontend_events, "decoding", overall_progress, msg);
     });
 
     let path_for_decode = dest_path.clone();
@@ -393,7 +450,7 @@ async fn run_import<R: Runtime>(
         duration_seconds, decoded.sample_rate, decoded.channels
     );
 
-    emit_progress(&app, "resampling", 20, "Converting audio format...");
+    emit_progress(&app, emit_frontend_events, "resampling", 20, "Converting audio format...");
 
     // Check for cancellation
     if IMPORT_CANCELLED.load(Ordering::SeqCst) {
@@ -406,7 +463,7 @@ async fn run_import<R: Runtime>(
     let resample_progress = Box::new(move |progress: u32, msg: &str| {
         // Map resample progress: 20% + (progress * 0.05) to go from 20% to 25%
         let overall_progress = 20 + ((progress as f32 * 0.05) as u32);
-        emit_progress(&app_for_resample, "resampling", overall_progress, msg);
+        emit_progress(&app_for_resample, emit_frontend_events, "resampling", overall_progress, msg);
     });
 
     let audio_samples = tokio::task::spawn_blocking(move || {
@@ -419,7 +476,7 @@ async fn run_import<R: Runtime>(
         audio_samples.len()
     );
 
-    emit_progress(&app, "vad", 25, "Detecting speech segments...");
+    emit_progress(&app, emit_frontend_events, "vad", 25, "Detecting speech segments...");
 
     // Check for cancellation
     if IMPORT_CANCELLED.load(Ordering::SeqCst) {
@@ -438,6 +495,7 @@ async fn run_import<R: Runtime>(
                 let overall_progress = 25 + (vad_progress as f32 * 0.05) as u32;
                 emit_progress(
                     &app_for_vad,
+                    emit_frontend_events,
                     "vad",
                     overall_progress,
                     &format!(
@@ -485,17 +543,18 @@ async fn run_import<R: Runtime>(
     if total_segments == 0 {
         warn!("No speech detected in audio");
 
-        // Emit warning to frontend
-        let _ = app.emit(
-            "import-warning",
-            ImportWarning {
-                warning: "No speech detected in audio file".to_string(),
-                details: Some(
-                    "The file was imported successfully, but VAD did not detect any speech. \
-                     The meeting was created but contains no transcripts.".to_string()
-                ),
-            },
-        );
+        if emit_frontend_events {
+            let _ = app.emit(
+                "import-warning",
+                ImportWarning {
+                    warning: "No speech detected in audio file".to_string(),
+                    details: Some(
+                        "The file was imported successfully, but VAD did not detect any speech. \
+                         The meeting was created but contains no transcripts.".to_string()
+                    ),
+                },
+            );
+        }
         // Still create the meeting, just with no transcripts
     }
 
@@ -505,7 +564,7 @@ async fn run_import<R: Runtime>(
         return Err(anyhow!("Import cancelled"));
     }
 
-    emit_progress(&app, "transcribing", 30, "Loading transcription engine...");
+    emit_progress(&app, emit_frontend_events, "transcribing", 30, "Loading transcription engine...");
 
     // Initialize the appropriate engine
     let whisper_engine = if !use_parakeet && total_segments > 0 {
@@ -558,6 +617,7 @@ async fn run_import<R: Runtime>(
         let segment_duration_sec = (segment.end_timestamp_ms - segment.start_timestamp_ms) / 1000.0;
         emit_progress(
             &app,
+            emit_frontend_events,
             "transcribing",
             progress,
             &format!(
@@ -627,7 +687,7 @@ async fn run_import<R: Runtime>(
         return Err(anyhow!("Import cancelled"));
     }
 
-    emit_progress(&app, "saving", 85, "Creating meeting...");
+    emit_progress(&app, emit_frontend_events, "saving", 85, "Creating meeting...");
 
     // Create transcript segments
     let segments = create_transcript_segments(&all_transcripts);
@@ -642,11 +702,12 @@ async fn run_import<R: Runtime>(
         &title,
         &segments,
         meeting_folder.to_string_lossy().to_string(),
+        source_capture_id.as_deref(),
     )
     .await?;
 
     // Write transcripts.json and metadata.json to the meeting folder
-    emit_progress(&app, "saving", 90, "Writing transcript files...");
+    emit_progress(&app, emit_frontend_events, "saving", 90, "Writing transcript files...");
 
     if let Err(e) = write_transcripts_json(&meeting_folder, &segments) {
         warn!("Failed to write transcripts.json: {}", e);
@@ -658,12 +719,12 @@ async fn run_import<R: Runtime>(
         &title,
         duration_seconds,
         &dest_filename,
-        "import",
+        source_kind,
     ) {
         warn!("Failed to write metadata.json: {}", e);
     }
 
-    emit_progress(&app, "complete", 100, "Import complete");
+    emit_progress(&app, emit_frontend_events, "complete", 100, "Import complete");
 
     Ok(ImportResult {
         meeting_id,
@@ -674,7 +735,16 @@ async fn run_import<R: Runtime>(
 }
 
 /// Emit progress event
-fn emit_progress<R: Runtime>(app: &AppHandle<R>, stage: &str, progress: u32, message: &str) {
+fn emit_progress<R: Runtime>(
+    app: &AppHandle<R>,
+    enabled: bool,
+    stage: &str,
+    progress: u32,
+    message: &str,
+) {
+    if !enabled {
+        return;
+    }
     let _ = app.emit(
         "import-progress",
         ImportProgress {
@@ -692,6 +762,7 @@ async fn create_meeting_with_transcripts(
     title: &str,
     segments: &[TranscriptSegment],
     folder_path: String,
+    source_capture_id: Option<&str>,
 ) -> Result<String> {
     let meeting_id = format!("meeting-{}", Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -732,6 +803,16 @@ async fn create_meeting_with_transcripts(
         .execute(&mut *tx)
         .await
         .map_err(|e| anyhow!("Failed to insert transcript: {}", e))?;
+    }
+
+    if let Some(capture_id) = source_capture_id {
+        DeviceSyncRepository::mark_imported_in_transaction(
+            &mut tx,
+            capture_id,
+            &meeting_id,
+        )
+        .await
+        .map_err(|e| anyhow!("Failed to link phone capture to meeting: {}", e))?;
     }
 
     tx.commit()

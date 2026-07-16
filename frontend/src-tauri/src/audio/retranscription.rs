@@ -168,6 +168,18 @@ fn find_audio_file(folder: &Path) -> Result<PathBuf> {
     Err(anyhow!("No audio file found in: {}", folder.display()))
 }
 
+#[tauri::command]
+pub fn resolve_meeting_audio_file_command(meeting_folder_path: String) -> Result<String, String> {
+    let folder = PathBuf::from(meeting_folder_path);
+    if !folder.is_absolute() {
+        return Err("Meeting folder path must be absolute".to_string());
+    }
+
+    find_audio_file(&folder)
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|error| error.to_string())
+}
+
 /// Internal function to run retranscription
 async fn run_retranscription<R: Runtime>(
     app: AppHandle<R>,
@@ -955,6 +967,20 @@ mod tests {
         std::fs::write(dir.path().join("audio.wav"), b"fake").unwrap();
         let found = find_audio_file(dir.path()).unwrap();
         assert_eq!(found.file_name().unwrap(), "audio.wav");
+    }
+
+    #[test]
+    fn test_resolve_meeting_audio_file_command_finds_phone_aac() {
+        let dir = tempfile::tempdir().unwrap();
+        let audio_path = dir.path().join("audio.aac");
+        std::fs::write(&audio_path, b"fake").unwrap();
+
+        let found = resolve_meeting_audio_file_command(
+            dir.path().to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(PathBuf::from(found), audio_path);
     }
 
     #[test]

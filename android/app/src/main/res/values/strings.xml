@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Briefli Capture</string>
+    <string name="recording_channel_name">Meeting recording</string>
+    <string name="sync_channel_name">Phone sync</string>
+</resources>

@@ -41,6 +41,7 @@ pub mod audio;
 pub mod config;
 pub mod console_utils;
 pub mod database;
+pub mod device_sync;
 pub mod notifications;
 pub mod ollama;
 pub mod onboarding;
@@ -387,7 +388,12 @@ pub fn get_language_preference_internal() -> Option<String> {
     LANGUAGE_PREFERENCE.lock().ok().map(|lang| lang.clone())
 }
 
+fn install_rustls_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 pub fn run() {
+    install_rustls_crypto_provider();
     log::set_max_level(log::LevelFilter::Info);
 
     let mut builder = tauri::Builder::default();
@@ -417,6 +423,7 @@ pub fn run() {
         )) as NotificationManagerState<tauri::Wry>)
         .manage(audio::init_system_audio_state())
         .manage(summary::summary_engine::ModelManagerState(Arc::new(tokio::sync::Mutex::new(None))))
+        .manage(device_sync::commands::DeviceSyncRuntimeState::new())
         .setup(|_app| {
             log::info!("Application setup complete");
 
@@ -763,12 +770,18 @@ pub fn run() {
             audio::retranscription::start_retranscription_command,
             audio::retranscription::cancel_retranscription_command,
             audio::retranscription::is_retranscription_in_progress_command,
+            audio::retranscription::resolve_meeting_audio_file_command,
             // Import audio commands
             audio::import::select_and_validate_audio_command,
             audio::import::validate_audio_file_command,
             audio::import::start_import_audio_command,
             audio::import::cancel_import_command,
             audio::import::is_import_in_progress_command,
+            // Phone capture sync commands
+            device_sync::commands::start_device_sync_session,
+            device_sync::commands::stop_device_sync_session,
+            device_sync::commands::get_device_sync_status,
+            device_sync::commands::unpair_device_sync_phone,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -781,6 +794,13 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     log::info!("Application exiting, cleaning up resources...");
                     tauri::async_runtime::block_on(async {
+                        if let Some(runtime) = _app_handle
+                            .try_state::<device_sync::commands::DeviceSyncRuntimeState>()
+                        {
+                            log::info!("Stopping phone sync server...");
+                            runtime.shutdown().await;
+                        }
+
                         // Clean up database connection and checkpoint WAL
                         if let Some(app_state) = _app_handle.try_state::<state::AppState>() {
                             log::info!("Starting database cleanup...");
@@ -804,4 +824,13 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+#[cfg(test)]
+mod rustls_provider_tests {
+    #[test]
+    fn ring_provider_is_selected_explicitly() {
+        super::install_rustls_crypto_provider();
+        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    }
 }
