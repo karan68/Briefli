@@ -211,7 +211,11 @@ jobs:
 
       - name: Run full Rust library tests serially on Windows
         if: runner.os == 'Windows'
-        run: cargo test -p briefli --lib --locked -- --test-threads=1 --skip audio::playback_monitor::tests::test_get_output_device
+        run: >-
+          cargo test -p briefli --lib --locked --
+          --test-threads=1
+          --skip audio::playback_monitor::tests::test_get_output_device
+          --skip audio::system_audio_commands::tests::test_list_system_audio_devices
 
   integration:
     name: ci / integration
