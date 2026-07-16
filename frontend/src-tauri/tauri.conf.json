@@ -107,7 +107,10 @@
             "hardenedRuntime": true
         },
         "windows": {
-            "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1"
+            "signCommand": "powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1 -FilePath %1",
+            "wix": {
+                "version": "0.5.0.2"
+            }
         }
     },
     "plugins": {

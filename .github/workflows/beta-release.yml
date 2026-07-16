@@ -41,14 +41,20 @@ jobs:
           fi
           version=$(node -p "require('./frontend/package.json').version")
           tauri_version=$(node -p "require('./frontend/src-tauri/tauri.conf.json').version")
+          msi_version=$(node -p "require('./frontend/src-tauri/tauri.conf.json').bundle.windows.wix.version")
           cargo_version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' frontend/src-tauri/Cargo.toml | head -1)
           lock_version=$(awk '/name = "briefli"/{found=1; next} found && /version = /{gsub(/"/, "", $3); print $3; exit}' Cargo.lock)
           android_version=$(sed -n 's/.*versionName = "\([^"]*\)"/\1/p' android/app/build.gradle.kts | head -1)
           android_version_code=$(sed -n 's/.*versionCode = \([0-9][0-9]*\)/\1/p' android/app/build.gradle.kts | head -1)
           updater_endpoint=$(node -p "require('./frontend/src-tauri/tauri.conf.json').plugins.updater.endpoints[0]")
 
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+          if [[ ! "$version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)-beta\.([0-9]+)$ ]]; then
             echo "ERROR: Beta version must use MAJOR.MINOR.PATCH-beta.NUMBER: $version"
+            exit 1
+          fi
+          expected_msi_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${BASH_REMATCH[4]}"
+          if [[ "$msi_version" != "$expected_msi_version" ]]; then
+            echo "ERROR: MSI version must be $expected_msi_version for beta $version, got $msi_version"
             exit 1
           fi
           if [[ "$tauri_version" != "$version" || "$cargo_version" != "$version" || "$lock_version" != "$version" || "$android_version" != "$version" ]]; then
@@ -259,11 +265,18 @@ jobs:
           fi
           build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
           apksigner="$ANDROID_HOME/build-tools/$build_tools/apksigner"
-          "$apksigner" verify --verbose --print-certs "$source_apk"
-          actual_digest=$("$apksigner" verify --print-certs "$source_apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]')
-          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]')
+          cert_output=$("$apksigner" verify --verbose --print-certs "$source_apk" 2>&1)
+          printf '%s\n' "$cert_output"
+          actual_digest=$(printf '%s\n' "$cert_output" | sed -nE 's/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest:[[:space:]]*//p' | tr '[:upper:]' '[:lower:]' | sort -u)
+          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]:')
+          if [[ ! "$actual_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "ERROR: expected exactly one Android signer digest, got: ${actual_digest:-<none>}"
+            exit 1
+          fi
           if [[ "$actual_digest" != "$expected_digest" ]]; then
             echo "ERROR: Android signer digest does not match the configured Briefli release key"
+            echo "Expected: $expected_digest"
+            echo "Actual:   $actual_digest"
             exit 1
           fi
           mkdir -p release-assets
@@ -308,11 +321,18 @@ jobs:
           fi
           build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
           apksigner="$ANDROID_HOME/build-tools/$build_tools/apksigner"
-          "$apksigner" verify --verbose --print-certs "$apk"
-          actual_digest=$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:upper:]' '[:lower:]')
-          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]')
+          cert_output=$("$apksigner" verify --verbose --print-certs "$apk" 2>&1)
+          printf '%s\n' "$cert_output"
+          actual_digest=$(printf '%s\n' "$cert_output" | sed -nE 's/^(Signer #[0-9]+|V[0-9]+ Signer): certificate SHA-256 digest:[[:space:]]*//p' | tr '[:upper:]' '[:lower:]' | sort -u)
+          expected_digest=$(printf '%s' "$EXPECTED_CERT_SHA256" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]:')
+          if [[ ! "$actual_digest" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "ERROR: expected exactly one Android signer digest, got: ${actual_digest:-<none>}"
+            exit 1
+          fi
           if [[ "$actual_digest" != "$expected_digest" ]]; then
             echo "ERROR: downloaded APK signer digest is not the Briefli release key"
+            echo "Expected: $expected_digest"
+            echo "Actual:   $actual_digest"
             exit 1
           fi
           gh attestation verify "$apk" \
