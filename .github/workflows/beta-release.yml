@@ -537,8 +537,10 @@ jobs:
         env:
           TAG: ${{ needs.create-release.outputs.tag }}
         run: |
-          echo "## Verified beta published" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Release: https://github.com/${{ github.repository }}/releases/tag/${TAG}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The beta is provenance-attested and updater-signed, but not Authenticode signed." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Verified beta published"
+            echo ""
+            echo "Release: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+            echo ""
+            echo "The beta is provenance-attested and updater-signed, but not Authenticode signed."
+          } >> "$GITHUB_STEP_SUMMARY"

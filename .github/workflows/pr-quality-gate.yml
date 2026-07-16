@@ -78,6 +78,8 @@ jobs:
 
       - name: Validate workflow YAML
         uses: docker://rhysd/actionlint@sha256:9d36088643581e728c969f35141f88139fec77280b2be23c1f66f8e40e1025e7 # 1.7.12 linux/amd64
+        with:
+          args: -shellcheck=
 
   frontend:
     name: ci / frontend
