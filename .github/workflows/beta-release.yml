@@ -313,7 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          gh release download "$TAG" --pattern '*.apk' --dir release-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.apk' --dir release-assets
           apk=$(find release-assets -maxdepth 1 -type f -name '*.apk' -print -quit)
           if [[ -z "$apk" ]]; then
             echo "ERROR: Android APK is missing from the draft release"
