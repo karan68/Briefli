@@ -179,8 +179,8 @@ impl DeviceSyncRepository {
         device_id: &str,
         sequence: u64,
     ) -> Result<(), DeviceSyncRepositoryError> {
-        let sequence = i64::try_from(sequence)
-            .map_err(|_| DeviceSyncRepositoryError::NumericOverflow)?;
+        let sequence =
+            i64::try_from(sequence).map_err(|_| DeviceSyncRepositoryError::NumericOverflow)?;
         let now = Utc::now().to_rfc3339();
         let result = sqlx::query(
             "UPDATE paired_devices
@@ -421,20 +421,10 @@ impl DeviceSyncRepository {
         capture_id: &str,
         error: &str,
     ) -> Result<(), DeviceSyncRepositoryError> {
-        transition_status(
-            pool,
-            capture_id,
-            "importing",
-            "failed",
-            None,
-            Some(error),
-        )
-        .await
+        transition_status(pool, capture_id, "importing", "failed", None, Some(error)).await
     }
 
-    pub async fn list_captures(
-        pool: &SqlitePool,
-    ) -> Result<Vec<MobileCapture>, sqlx::Error> {
+    pub async fn list_captures(pool: &SqlitePool) -> Result<Vec<MobileCapture>, sqlx::Error> {
         sqlx::query_as::<_, MobileCapture>(
             "SELECT id, device_id, title, started_at, duration_ms, byte_length,
                     bytes_received, media_type, file_extension, sha256, status,
@@ -609,10 +599,7 @@ mod tests {
             replay,
             DeviceSyncRepositoryError::ReplayedSequence
         ));
-        assert!(matches!(
-            older,
-            DeviceSyncRepositoryError::ReplayedSequence
-        ));
+        assert!(matches!(older, DeviceSyncRepositoryError::ReplayedSequence));
     }
 
     #[tokio::test]
@@ -628,7 +615,10 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(DeviceSyncRepository::list_devices(&pool).await.unwrap().is_empty());
+        assert!(DeviceSyncRepository::list_devices(&pool)
+            .await
+            .unwrap()
+            .is_empty());
         assert!(matches!(
             DeviceSyncRepository::advance_sequence(&pool, device_id, 6)
                 .await
@@ -636,19 +626,21 @@ mod tests {
             DeviceSyncRepositoryError::DeviceUnavailable
         ));
 
-        let repaired = DeviceSyncRepository::pair_device(
-            &pool,
-            device_id,
-            "Pixel repaired",
-            &public_key,
-        )
-        .await
-        .unwrap();
+        let repaired =
+            DeviceSyncRepository::pair_device(&pool, device_id, "Pixel repaired", &public_key)
+                .await
+                .unwrap();
 
         assert_eq!(repaired.display_name, "Pixel repaired");
         assert_eq!(repaired.last_sequence, 0);
         assert!(repaired.revoked_at.is_none());
-        assert_eq!(DeviceSyncRepository::list_devices(&pool).await.unwrap().len(), 1);
+        assert_eq!(
+            DeviceSyncRepository::list_devices(&pool)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -717,14 +709,9 @@ mod tests {
         let pool = paired_pool().await;
         let device_id = "7d9a2b92-c934-42f4-9d08-744563ebf8be";
         let manifest = manifest();
-        DeviceSyncRepository::register_capture(
-            &pool,
-            device_id,
-            &manifest,
-            "C:/inbox/audio.part",
-        )
-        .await
-        .unwrap();
+        DeviceSyncRepository::register_capture(&pool, device_id, &manifest, "C:/inbox/audio.part")
+            .await
+            .unwrap();
 
         assert!(DeviceSyncRepository::mark_received(
             &pool,
@@ -754,13 +741,9 @@ mod tests {
         DeviceSyncRepository::mark_importing(&pool, &manifest.capture_id)
             .await
             .unwrap();
-        DeviceSyncRepository::mark_imported(
-            &pool,
-            &manifest.capture_id,
-            "meeting-1",
-        )
-        .await
-        .unwrap();
+        DeviceSyncRepository::mark_imported(&pool, &manifest.capture_id, "meeting-1")
+            .await
+            .unwrap();
 
         let capture = DeviceSyncRepository::get_capture(&pool, &manifest.capture_id)
             .await
@@ -775,14 +758,9 @@ mod tests {
         let pool = paired_pool().await;
         let device_id = "7d9a2b92-c934-42f4-9d08-744563ebf8be";
         let manifest = manifest();
-        DeviceSyncRepository::register_capture(
-            &pool,
-            device_id,
-            &manifest,
-            "C:/inbox/audio.part",
-        )
-        .await
-        .unwrap();
+        DeviceSyncRepository::register_capture(&pool, device_id, &manifest, "C:/inbox/audio.part")
+            .await
+            .unwrap();
         DeviceSyncRepository::record_received_bytes(
             &pool,
             &manifest.capture_id,
@@ -830,14 +808,9 @@ mod tests {
         let pool = paired_pool().await;
         let device_id = "7d9a2b92-c934-42f4-9d08-744563ebf8be";
         let manifest = manifest();
-        DeviceSyncRepository::register_capture(
-            &pool,
-            device_id,
-            &manifest,
-            "C:/inbox/audio.part",
-        )
-        .await
-        .unwrap();
+        DeviceSyncRepository::register_capture(&pool, device_id, &manifest, "C:/inbox/audio.part")
+            .await
+            .unwrap();
         DeviceSyncRepository::record_received_bytes(
             &pool,
             &manifest.capture_id,

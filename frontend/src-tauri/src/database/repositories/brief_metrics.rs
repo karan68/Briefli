@@ -7,18 +7,17 @@ pub struct BriefMetricsRepository;
 
 impl BriefMetricsRepository {
     pub async fn get(pool: &SqlitePool) -> Result<LocalBriefMetricsModel, SqlxError> {
-        let (enabled, brief_open_count, source_open_count) =
-            sqlx::query_as::<_, (i64, i64, i64)>(
-                "SELECT p.enabled,
+        let (enabled, brief_open_count, source_open_count) = sqlx::query_as::<_, (i64, i64, i64)>(
+            "SELECT p.enabled,
                         SUM(CASE WHEN e.event_type = 'brief_opened' THEN 1 ELSE 0 END),
                         SUM(CASE WHEN e.event_type = 'source_opened' THEN 1 ELSE 0 END)
                  FROM brief_usage_preferences p
                  LEFT JOIN brief_usage_events e ON 1 = 1
                  WHERE p.id = 1
                  GROUP BY p.enabled",
-            )
-            .fetch_one(pool)
-            .await?;
+        )
+        .fetch_one(pool)
+        .await?;
         Ok(LocalBriefMetricsModel {
             enabled: enabled == 1,
             brief_open_count,
@@ -27,13 +26,11 @@ impl BriefMetricsRepository {
     }
 
     pub async fn set_enabled(pool: &SqlitePool, enabled: bool) -> Result<(), SqlxError> {
-        sqlx::query(
-            "UPDATE brief_usage_preferences SET enabled = ?, updated_at = ? WHERE id = 1",
-        )
-        .bind(enabled)
-        .bind(Utc::now().to_rfc3339())
-        .execute(pool)
-        .await?;
+        sqlx::query("UPDATE brief_usage_preferences SET enabled = ?, updated_at = ? WHERE id = 1")
+            .bind(enabled)
+            .bind(Utc::now().to_rfc3339())
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -100,9 +97,11 @@ mod tests {
         let pool = test_pool().await;
         let initial = BriefMetricsRepository::get(&pool).await.unwrap();
         assert!(!initial.enabled);
-        assert!(!BriefMetricsRepository::record(&pool, "brief_opened", "space-1", None)
-            .await
-            .unwrap());
+        assert!(
+            !BriefMetricsRepository::record(&pool, "brief_opened", "space-1", None)
+                .await
+                .unwrap()
+        );
         assert_eq!(BriefMetricsRepository::get(&pool).await.unwrap(), initial);
     }
 
@@ -112,9 +111,11 @@ mod tests {
         BriefMetricsRepository::set_enabled(&pool, true)
             .await
             .unwrap();
-        assert!(BriefMetricsRepository::record(&pool, "brief_opened", "space-1", None)
-            .await
-            .unwrap());
+        assert!(
+            BriefMetricsRepository::record(&pool, "brief_opened", "space-1", None)
+                .await
+                .unwrap()
+        );
         assert!(BriefMetricsRepository::record(
             &pool,
             "source_opened",
@@ -123,9 +124,11 @@ mod tests {
         )
         .await
         .unwrap());
-        assert!(BriefMetricsRepository::record(&pool, "unknown", "space-1", None)
-            .await
-            .is_err());
+        assert!(
+            BriefMetricsRepository::record(&pool, "unknown", "space-1", None)
+                .await
+                .is_err()
+        );
 
         let metrics = BriefMetricsRepository::get(&pool).await.unwrap();
         assert!(metrics.enabled);

@@ -90,24 +90,22 @@ impl MemorySpacesRepository {
         space_id: Option<&str>,
     ) -> Result<(), SqlxError> {
         let mut transaction = pool.begin().await?;
-        let meeting_exists = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM meetings WHERE id = ?",
-        )
-        .bind(meeting_id)
-        .fetch_one(&mut *transaction)
-        .await?;
+        let meeting_exists =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM meetings WHERE id = ?")
+                .bind(meeting_id)
+                .fetch_one(&mut *transaction)
+                .await?;
         if meeting_exists == 0 {
             return Err(SqlxError::RowNotFound);
         }
 
         match space_id {
             Some(space_id) => {
-                let space_exists = sqlx::query_scalar::<_, i64>(
-                    "SELECT COUNT(*) FROM memory_spaces WHERE id = ?",
-                )
-                .bind(space_id)
-                .fetch_one(&mut *transaction)
-                .await?;
+                let space_exists =
+                    sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM memory_spaces WHERE id = ?")
+                        .bind(space_id)
+                        .fetch_one(&mut *transaction)
+                        .await?;
                 if space_exists == 0 {
                     return Err(SqlxError::RowNotFound);
                 }
@@ -171,7 +169,9 @@ impl MemorySpacesRepository {
             match memory.kind.as_str() {
                 "decision" => decisions.push(memory),
                 "commitment" if memory.resolution_status == "open" => commitments.push(memory),
-                "open_question" if memory.resolution_status == "open" => open_questions.push(memory),
+                "open_question" if memory.resolution_status == "open" => {
+                    open_questions.push(memory)
+                }
                 _ => {}
             }
         }
@@ -262,12 +262,17 @@ mod tests {
     async fn creates_lists_and_assigns_spaces() {
         let pool = test_pool().await;
         seed_meeting(&pool).await;
-        let space = MemorySpacesRepository::create(&pool, " Acme ").await.unwrap();
+        let space = MemorySpacesRepository::create(&pool, " Acme ")
+            .await
+            .unwrap();
         assert_eq!(space.name, "Acme");
         MemorySpacesRepository::assign(&pool, "meeting-1", Some(&space.id))
             .await
             .unwrap();
-        assert_eq!(MemorySpacesRepository::list(&pool).await.unwrap()[0].meeting_count, 1);
+        assert_eq!(
+            MemorySpacesRepository::list(&pool).await.unwrap()[0].meeting_count,
+            1
+        );
         assert_eq!(
             MemorySpacesRepository::assignments(&pool).await.unwrap()[0].space_id,
             Some(space.id)
@@ -288,7 +293,9 @@ mod tests {
         seed_memory(&pool, "done-commitment", "commitment", "confirmed", "done").await;
         seed_memory(&pool, "open-question", "open_question", "confirmed", "open").await;
 
-        let brief = MemorySpacesRepository::brief(&pool, &space.id).await.unwrap();
+        let brief = MemorySpacesRepository::brief(&pool, &space.id)
+            .await
+            .unwrap();
         assert_eq!(brief.decisions.len(), 1);
         assert_eq!(brief.commitments.len(), 1);
         assert_eq!(brief.open_questions.len(), 1);
@@ -306,9 +313,11 @@ mod tests {
             .await
             .is_err());
         seed_meeting(&pool).await;
-        assert!(MemorySpacesRepository::assign(&pool, "meeting-1", Some("missing"))
-            .await
-            .is_err());
+        assert!(
+            MemorySpacesRepository::assign(&pool, "meeting-1", Some("missing"))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -331,7 +340,10 @@ mod tests {
         MemorySpacesRepository::delete(&pool, &space.id)
             .await
             .unwrap();
-        assert!(MemorySpacesRepository::list(&pool).await.unwrap().is_empty());
+        assert!(MemorySpacesRepository::list(&pool)
+            .await
+            .unwrap()
+            .is_empty());
         assert_eq!(
             MemorySpacesRepository::assignments(&pool).await.unwrap()[0].space_id,
             None

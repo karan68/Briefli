@@ -126,11 +126,7 @@ impl CommitmentsRepository {
     }
 
     /// Update a single commitment's status (e.g. "open" or "done").
-    pub async fn set_status(
-        pool: &SqlitePool,
-        id: &str,
-        status: &str,
-    ) -> Result<(), SqlxError> {
+    pub async fn set_status(pool: &SqlitePool, id: &str, status: &str) -> Result<(), SqlxError> {
         let now = Utc::now().to_rfc3339();
         sqlx::query("UPDATE commitments SET status = ?, updated_at = ? WHERE id = ?")
             .bind(status)
@@ -228,7 +224,10 @@ fn parse_action_items(markdown: &str) -> Option<Vec<ParsedActionItem>> {
             .collect()
     };
 
-    let header: Vec<String> = parse_cells(rows[0]).iter().map(|h| h.to_lowercase()).collect();
+    let header: Vec<String> = parse_cells(rows[0])
+        .iter()
+        .map(|h| h.to_lowercase())
+        .collect();
     let find_col = |name: &str| header.iter().position(|h| h.contains(name));
     let task_col = find_col("task").unwrap_or(1);
     let owner_col = find_col("owner");
@@ -244,7 +243,11 @@ fn parse_action_items(markdown: &str) -> Option<Vec<ParsedActionItem>> {
         }
 
         let cells = parse_cells(row);
-        let task = cells.get(task_col).map(|s| s.trim()).unwrap_or("").to_string();
+        let task = cells
+            .get(task_col)
+            .map(|s| s.trim())
+            .unwrap_or("")
+            .to_string();
         if task.is_empty() || is_noise(&task) {
             continue;
         }

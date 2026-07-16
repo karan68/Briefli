@@ -395,7 +395,11 @@ impl MeetingMemoriesRepository {
 }
 
 fn owner_key(value: &str) -> String {
-    value.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 async fn resolve_owner_alias(
@@ -1075,9 +1079,11 @@ mod tests {
             .find(|memory| memory.kind == "decision")
             .unwrap();
 
-        assert!(MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &commitment.id)
-            .await
-            .is_err());
+        assert!(
+            MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &commitment.id)
+                .await
+                .is_err()
+        );
         MeetingMemoriesRepository::review(
             &pool,
             &commitment.id,
@@ -1093,16 +1099,20 @@ mod tests {
         MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &commitment.id)
             .await
             .unwrap();
-        assert!(MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &decision.id)
-            .await
-            .is_err());
+        assert!(
+            MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &decision.id)
+                .await
+                .is_err()
+        );
 
         MeetingMemoriesRepository::set_resolution(&pool, &commitment.id, "done")
             .await
             .unwrap();
-        assert!(MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &commitment.id)
-            .await
-            .is_err());
+        assert!(
+            MeetingMemoriesRepository::mark_follow_up_reviewed(&pool, &commitment.id)
+                .await
+                .is_err()
+        );
         MeetingMemoriesRepository::set_resolution(&pool, &commitment.id, "open")
             .await
             .unwrap();

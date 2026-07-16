@@ -94,8 +94,7 @@ mod tests {
     fn rejects_tampered_message() {
         let (public_key, signature) = signed_message(b"original");
 
-        let error = verify_p256_signature(&public_key, &signature, b"tampered")
-            .unwrap_err();
+        let error = verify_p256_signature(&public_key, &signature, b"tampered").unwrap_err();
 
         assert_eq!(error, SignatureVerificationError::VerificationFailed);
     }
@@ -106,8 +105,7 @@ mod tests {
         let (public_key, _) = signed_message(message);
         let (_, other_signature) = signed_message(message);
 
-        let error = verify_p256_signature(&public_key, &other_signature, message)
-            .unwrap_err();
+        let error = verify_p256_signature(&public_key, &other_signature, message).unwrap_err();
 
         assert_eq!(error, SignatureVerificationError::VerificationFailed);
     }

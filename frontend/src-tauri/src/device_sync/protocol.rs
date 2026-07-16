@@ -29,11 +29,7 @@ impl PairDeviceRequest {
     pub fn validate(&self) -> Result<(), ProtocolValidationError> {
         validate_protocol_version(self.protocol_version)?;
         validate_uuid("deviceId", &self.device_id)?;
-        validate_text(
-            "deviceName",
-            &self.device_name,
-            MAX_DEVICE_NAME_CHARS,
-        )?;
+        validate_text("deviceName", &self.device_name, MAX_DEVICE_NAME_CHARS)?;
 
         if self.public_key_spki_base64.len() < 64 || self.public_key_spki_base64.len() > 1024 {
             return Err(ProtocolValidationError::new(
@@ -97,9 +93,7 @@ impl CaptureManifest {
             ));
         }
 
-        if self.sha256.len() != 64
-            || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
-        {
+        if self.sha256.len() != 64 || !self.sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(ProtocolValidationError::new(
                 "sha256",
                 "must be a 64-character hexadecimal SHA-256 digest",
@@ -157,9 +151,7 @@ pub fn canonical_request_payload(
             "must be greater than zero",
         ));
     }
-    if body_sha256.len() != 64
-        || !body_sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
+    if body_sha256.len() != 64 || !body_sha256.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(ProtocolValidationError::new(
             "bodySha256",
             "must be a 64-character hexadecimal SHA-256 digest",
