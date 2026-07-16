@@ -206,7 +206,12 @@ jobs:
         run: cargo check -p briefli --example verify_updater_signature --locked
 
       - name: Run full Rust library tests
+        if: runner.os != 'Windows'
         run: cargo test -p briefli --lib --locked -- --skip audio::playback_monitor::tests::test_get_output_device
+
+      - name: Run full Rust library tests serially on Windows
+        if: runner.os == 'Windows'
+        run: cargo test -p briefli --lib --locked -- --test-threads=1 --skip audio::playback_monitor::tests::test_get_output_device
 
   integration:
     name: ci / integration
