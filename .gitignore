@@ -77,3 +77,11 @@ experiments/
 target/
 
 frontend/src-tauri/binaries/
+
+# Android
+/android/.gradle/
+/android/**/build/
+/android/local.properties
+/android/.idea/
+*.jks
+*.keystore

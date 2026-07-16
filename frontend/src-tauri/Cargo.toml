@@ -68,6 +68,15 @@ anyhow = "1.0"
 once_cell = "1.17.1"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 posthog-rs = "0.3.7"
+base64 = "0.22.1"
+p256 = { version = "0.13.2", features = ["ecdsa", "pkcs8"] }
+sha2 = "0.10.9"
+subtle = "2.6.1"
+axum = "0.7.9"
+axum-server = { version = "=0.7.3", features = ["tls-rustls"] }
+rustls = { version = "0.23.40", default-features = false, features = ["ring", "std"] }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
+rcgen = "0.13.2"
 
 # Cross-platform audio capture
 cpal = "0.15.3"
@@ -206,6 +215,7 @@ memory-stats = "1.0"
 strsim = "0.10.0"
 futures = "0.3.31"
 tracing-subscriber = "0.3.16"
+tower = { version = "0.5", features = ["util"] }
 
 [patch.crates-io]
 cpal = { git = "https://github.com/RustAudio/cpal", rev = "51c3b43" }

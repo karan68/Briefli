@@ -6,6 +6,7 @@ use realfft::RealFftPlanner;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use nnnoiseless::DenoiseState;
 
@@ -40,10 +41,21 @@ pub fn create_meeting_folder(
     let timestamp = Utc::now().format("%Y-%m-%d_%H-%M").to_string();
     let sanitized_name = sanitize_filename(meeting_name);
     let folder_name = format!("{}_{}", sanitized_name, timestamp);
-    let meeting_folder = base_path.join(folder_name);
-
-    // Create main meeting folder
-    std::fs::create_dir_all(&meeting_folder)?;
+    std::fs::create_dir_all(base_path)?;
+    let mut suffix = 1_u32;
+    let meeting_folder = loop {
+        let candidate_name = if suffix == 1 {
+            folder_name.clone()
+        } else {
+            format!("{folder_name}_{suffix}")
+        };
+        let candidate = base_path.join(candidate_name);
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => break candidate,
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => suffix += 1,
+            Err(error) => return Err(error.into()),
+        }
+    };
 
     // Only create .checkpoints subdirectory if requested (when auto_save is true)
     if create_checkpoints_dir {
@@ -55,6 +67,25 @@ pub fn create_meeting_folder(
     }
 
     Ok(meeting_folder)
+}
+
+#[cfg(test)]
+mod meeting_folder_tests {
+    use super::*;
+
+    #[test]
+    fn same_title_meetings_never_reuse_a_folder() {
+        let base = tempfile::tempdir().unwrap();
+        let base_path = base.path().to_path_buf();
+
+        let first = create_meeting_folder(&base_path, "Meeting", false).unwrap();
+        std::fs::write(first.join("audio.aac"), b"first").unwrap();
+        let second = create_meeting_folder(&base_path, "Meeting", false).unwrap();
+
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read(first.join("audio.aac")).unwrap(), b"first");
+        assert!(second.is_dir());
+    }
 }
 
 pub fn normalize_v2(audio: &[f32]) -> Vec<f32> {

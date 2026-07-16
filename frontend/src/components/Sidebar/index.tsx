@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, File, Settings, Calendar, Home, Trash2, Mic, Square, Plus, Pencil, NotebookPen, SearchIcon, X, Upload, ListChecks, BriefcaseBusiness } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, File, Settings, Calendar, Home, Trash2, Mic, Square, Plus, Pencil, NotebookPen, SearchIcon, X, Upload, ListChecks, BriefcaseBusiness, Smartphone } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useSidebar } from './SidebarProvider';
 import type { CurrentMeeting } from '@/components/Sidebar/SidebarProvider';
@@ -450,6 +450,7 @@ const Sidebar: React.FC = () => {
     const isHomePage = pathname === '/';
     const isMeetingPage = pathname?.includes('/meeting-details');
     const isPreparePage = pathname === '/prepare';
+    const isDeviceSyncPage = pathname === '/device-sync';
     const isSettingsPage = pathname === '/settings';
 
     return (
@@ -536,6 +537,20 @@ const Sidebar: React.FC = () => {
             </TooltipTrigger>
             <TooltipContent side="right">
               <p>Prepare</p>
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => router.push('/device-sync')}
+                className={`p-2 rounded transition-colors duration-150 ${isDeviceSyncPage ? 'bg-[#deddd3] text-briefli-ink' : 'text-briefli-muted hover:bg-[#e5e4db]'}`}
+              >
+                <Smartphone className="w-5 h-5 text-gray-600" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              <p>Phone sync</p>
             </TooltipContent>
           </Tooltip>
 
@@ -781,6 +796,15 @@ const Sidebar: React.FC = () => {
               >
                 <ListChecks className="w-4 h-4 mr-2" />
                 <span>Memory</span>
+              </div>
+            )}
+            {!isCollapsed && (
+              <div
+                onClick={() => router.push('/device-sync')}
+                className={`mx-3 mt-1 flex h-9 cursor-pointer items-center rounded px-3 text-sm font-medium ${pathname === '/device-sync' ? 'bg-[#deddd3] text-briefli-ink' : 'text-briefli-muted hover:bg-[#e5e4db]'}`}
+              >
+                <Smartphone className="w-4 h-4 mr-2" />
+                <span>Phone sync</span>
               </div>
             )}
           </div>
