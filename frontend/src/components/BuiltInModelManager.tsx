@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Download, RefreshCw, BadgeAlert, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatSummaryModelSizeLabelFromMb } from '@/lib/onboarding-summary-model';
+import { ConfirmationModal } from '@/components/ConfirmationModel/confirmation-modal';
 
 interface ModelInfo {
   name: string;
@@ -46,6 +47,8 @@ export function BuiltInModelManager({
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [downloadProgressInfo, setDownloadProgressInfo] = useState<Record<string, DownloadProgressInfo>>({});
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<ModelInfo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchModels = async () => {
     try {
@@ -254,6 +257,17 @@ export function BuiltInModelManager({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteModel(pendingDelete.name);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
   // Don't show loading spinner if we have downloads in progress - show the model list instead
   if (isLoading && downloadingModels.size === 0) {
     return (
@@ -410,7 +424,7 @@ export function BuiltInModelManager({
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteModel(model.name);
+                          setPendingDelete(model);
                         }}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
@@ -424,7 +438,7 @@ export function BuiltInModelManager({
                       className="p-2 rounded hover:bg-gray-100 transition-colors text-gray-500 hover:text-red-600"
                       onClick={(e) => {
                         e.stopPropagation();
-                        deleteModel(model.name);
+                        setPendingDelete(model);
                       }}
                       title="Delete model"
                     >
@@ -487,6 +501,15 @@ export function BuiltInModelManager({
           );
         })}
       </div>
+      <ConfirmationModal
+        isOpen={pendingDelete !== null}
+        title="Delete model"
+        text={pendingDelete ? `Delete ${pendingDelete.display_name} (${formatSummaryModelSizeLabelFromMb(pendingDelete.size_mb)})? You'll need to download it again to use it.` : ''}
+        confirmLabel="Delete"
+        isConfirming={isDeleting}
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!isDeleting) setPendingDelete(null); }}
+      />
     </div>
   );
 }

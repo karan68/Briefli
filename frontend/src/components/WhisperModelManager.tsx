@@ -14,6 +14,7 @@ import {
   WhisperAPI
 } from '../lib/whisper';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { ConfirmationModal } from '@/components/ConfirmationModel/confirmation-modal';
 
 interface ModelManagerProps {
   selectedModel?: string;
@@ -34,6 +35,8 @@ export function ModelManager({
   const [initialized, setInitialized] = useState(false);
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set());
   const [hasUserSelection, setHasUserSelection] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<ModelInfo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Refs for stable callbacks
   const onModelSelectRef = useRef(onModelSelect);
@@ -373,6 +376,17 @@ export function ModelManager({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteModel(pendingDelete.name);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
   const getDisplayName = (modelName: string): string => {
     const modelNameMapping: { [key: string]: string } = {
       "small": "Small",
@@ -434,7 +448,7 @@ export function ModelManager({
               }}
               onDownload={() => downloadModel(model.name)}
               onCancel={() => cancelDownload(model.name)}
-              onDelete={() => deleteModel(model.name)}
+              onDelete={() => setPendingDelete(model)}
               isDownloading={downloadingModels.has(model.name)}
               displayName={getDisplayName(model.name)}
             />
@@ -464,7 +478,7 @@ export function ModelManager({
                     }}
                     onDownload={() => downloadModel(model.name)}
                     onCancel={() => cancelDownload(model.name)}
-                    onDelete={() => deleteModel(model.name)}
+                    onDelete={() => setPendingDelete(model)}
                     isDownloading={downloadingModels.has(model.name)}
                     displayName={getDisplayName(model.name)}
                   />
@@ -485,6 +499,15 @@ export function ModelManager({
           Using {getDisplayName(selectedModel)} for transcription
         </motion.div>
       )}
+      <ConfirmationModal
+        isOpen={pendingDelete !== null}
+        title="Delete model"
+        text={pendingDelete ? `Delete ${getDisplayName(pendingDelete.name)} (${formatFileSize(pendingDelete.size_mb)})? You'll need to download it again to use it.` : ''}
+        confirmLabel="Delete"
+        isConfirming={isDeleting}
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!isDeleting) setPendingDelete(null); }}
+      />
     </div>
   );
 }
