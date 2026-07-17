@@ -109,6 +109,68 @@ Bundled templates include Standard Meeting, Daily Standup, Project Sync, Retrosp
 
 The summary workflow does not send the recorded audio file to an external AI provider. Provider retention and account policies still apply to text sent to that provider. See [Privacy and data handling](PRIVACY_POLICY.md).
 
+#### Custom summary templates
+
+A template controls how a meeting record is structured: each section's `instruction` tells the AI what to write, and the section order is the output order. Manage templates in **Settings > Summary > Summary Templates**.
+
+- **New template** builds one from scratch; **Duplicate** starts from an existing one.
+- **Edit** a built-in template to save a **Custom** copy with the same name. Deleting the custom copy restores the original built-in.
+- Toggle **Form / JSON** to edit the raw template JSON. **Validate** checks it before saving.
+- **Import JSON** pastes a template someone shared; **Copy JSON** exports one to your clipboard.
+
+Template JSON has this shape:
+
+```json
+{
+  "name": "Client Call",
+  "description": "Summary tuned for external client calls",
+  "sections": [
+    {
+      "title": "Overview",
+      "instruction": "Summarize the purpose and outcome of the call",
+      "format": "paragraph"
+    },
+    {
+      "title": "Decisions",
+      "instruction": "List the decisions that were agreed",
+      "format": "list"
+    },
+    {
+      "title": "Action Items",
+      "instruction": "List each commitment and who owns it",
+      "format": "list",
+      "item_format": "- [owner]: [task] (due [date])"
+    }
+  ]
+}
+```
+
+A minimal template needs only a name, a description, and one section:
+
+```json
+{
+  "name": "One-liner",
+  "description": "A single-paragraph recap",
+  "sections": [
+    { "title": "Summary", "instruction": "Summarize the meeting in one short paragraph", "format": "paragraph" }
+  ]
+}
+```
+
+Field reference:
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | yes | Display name (max 120 chars). |
+| `description` | yes | When to use it (max 500 chars). |
+| `sections` | yes | 1–30 sections; titles must be unique; order is the output order. |
+| `sections[].title` | yes | Section heading (max 120 chars). |
+| `sections[].instruction` | yes | What the AI extracts or writes (max 2000 chars). |
+| `sections[].format` | yes | One of `paragraph`, `list`, or `string`. |
+| `sections[].item_format` | no | Optional per-item hint for `list` sections (max 500 chars). |
+
+To get Trusted Memory suggestions, keep sections for decisions, action items/commitments, and open questions (see below). Templates are plain JSON files, so power users can back them up or share them directly: `%APPDATA%\Briefli\templates\` on Windows, `~/Library/Application Support/Briefli/templates/` on macOS, and `~/.config/Briefli/templates/` on Linux. The fixed multi-language and safety instructions are added automatically and are not part of the template.
+
 ### Trusted Memory
 
 Memory suggestions are created from recognized sections in a generated meeting record. A custom summary that omits decisions, action items/commitments/next steps, and open questions may produce no Memory suggestions.
@@ -148,7 +210,7 @@ Supported inputs include MP4, M4A, WAV, MP3, FLAC, OGG, AAC, MKV, WebM, and WMA.
 - **General:** recording notifications and the local recordings folder.
 - **Recordings:** audio saving, microphone/system devices, and in-person mode.
 - **Transcription:** install and select local Whisper or Parakeet models.
-- **Summary:** choose local or remote AI, control automatic summaries, and set preferred languages.
+- **Summary:** choose local or remote AI, control automatic summaries, set preferred languages, and create or edit summary templates.
 - **Beta:** enable audio import and retranscription.
 - **About > Check for Updates:** check GitHub Releases and install a signed update.
 
