@@ -11,6 +11,7 @@ import {
   getModelDisplayName,
   formatFileSize
 } from '../lib/parakeet';
+import { ConfirmationModal } from '@/components/ConfirmationModel/confirmation-modal';
 
 interface ParakeetModelManagerProps {
   selectedModel?: string;
@@ -30,6 +31,8 @@ export function ParakeetModelManager({
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
   const [downloadingModels, setDownloadingModels] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<ParakeetModelInfo | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Refs for stable callbacks
   const onModelSelectRef = useRef(onModelSelect);
@@ -328,6 +331,17 @@ export function ParakeetModelManager({
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteModel(pendingDelete.name);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className={`space-y-3 ${className}`}>
@@ -370,7 +384,7 @@ export function ParakeetModelManager({
           }}
           onDownload={() => downloadModel(recommendedModel.name)}
           onCancel={() => cancelDownload(recommendedModel.name)}
-          onDelete={() => deleteModel(recommendedModel.name)}
+          onDelete={() => setPendingDelete(recommendedModel)}
           isDownloading={downloadingModels.has(recommendedModel.name)}
         />
       )}
@@ -391,7 +405,7 @@ export function ParakeetModelManager({
               }}
               onDownload={() => downloadModel(model.name)}
               onCancel={() => cancelDownload(model.name)}
-              onDelete={() => deleteModel(model.name)}
+              onDelete={() => setPendingDelete(model)}
               isDownloading={downloadingModels.has(model.name)}
             />
           ))}
@@ -408,6 +422,15 @@ export function ParakeetModelManager({
           Using {getModelDisplayName(selectedModel)} for transcription
         </motion.div>
       )}
+      <ConfirmationModal
+        isOpen={pendingDelete !== null}
+        title="Delete model"
+        text={pendingDelete ? `Delete ${getModelDisplayName(pendingDelete.name)} (${formatFileSize(pendingDelete.size_mb)})? You'll need to download it again to use it.` : ''}
+        confirmLabel="Delete"
+        isConfirming={isDeleting}
+        onConfirm={confirmDelete}
+        onCancel={() => { if (!isDeleting) setPendingDelete(null); }}
+      />
     </div>
   );
 }
