@@ -43,8 +43,8 @@ export function useTranscriptRecovery(): UseTranscriptRecoveryReturn {
     try {
       const meetings = await indexedDBService.getAllMeetings();
 
-      // Filter out meetings older than 7 days and newer than 15 seconds
-      // The 15 seconds threshold prevents showing meetings from the current session(jus in case)
+      // Filter out meetings older than 7 days and newer than 2 seconds.
+      // The short delay prevents showing a meeting while stop processing is still finishing.
       // where recording just stopped but hasn't been fully saved yet
       const cutoffTime = Date.now() - (7 * 24 * 60 * 60 * 1000);
       const secondsAgo = Date.now() - (2 * 1000);
@@ -123,17 +123,8 @@ export function useTranscriptRecovery(): UseTranscriptRecoveryReturn {
       }
 
       // 3. Check for folder path
-      let folderPath = metadata.folderPath;
+      const folderPath = metadata.folderPath;
 
-
-      if (!folderPath) {
-        // Try to get from backend (might exist if only app crashed, not system)
-        try {
-          folderPath = await invoke<string>('get_meeting_folder_path');
-        } catch (error) {
-          folderPath = undefined;
-        }
-      }
 
       // 4. Attempt audio recovery if folder path exists
       let audioRecoveryStatus: AudioRecoveryStatus | null = null;
@@ -175,34 +166,52 @@ export function useTranscriptRecovery(): UseTranscriptRecoveryReturn {
         duration: (t as any).duration,
       }));
 
-      // 6. Save to backend database using existing save utilities
-      const saveResponse = await storageService.saveMeeting(
-        metadata.title,
-        formattedTranscripts,
-        folderPath ?? null
-      );
+      // 6. Reuse a meeting already saved during a failed finalization. Crash recovery
+      // still creates a new SQLite meeting because none exists yet.
+      let savedMeetingId = metadata.sqliteMeetingId;
+      if (!metadata.savedToSQLite || !savedMeetingId) {
+        const saveResponse = await storageService.saveMeeting(
+          metadata.title,
+          formattedTranscripts,
+          folderPath ?? null
+        );
+        savedMeetingId = saveResponse.meeting_id;
 
-      const savedMeetingId = saveResponse.meeting_id;
-
-      try {
-        await applyPinnedSummaryLanguageToMeeting(savedMeetingId);
-      } catch (error) {
-        console.warn('Failed to apply pinned summary language to recovered meeting:', error);
-        toast.warning('Could not apply default summary language', {
-          description: 'The recovered meeting was saved, but the default summary language was not applied.',
-        });
+        try {
+          await applyPinnedSummaryLanguageToMeeting(savedMeetingId);
+        } catch (error) {
+          console.warn('Failed to apply pinned summary language to recovered meeting:', error);
+          toast.warning('Could not apply default summary language', {
+            description: 'The recovered meeting was saved, but the default summary language was not applied.',
+          });
+        }
       }
 
-      // 7. Mark as saved in IndexedDB
+      const audioRecoveryFailed = Boolean(
+        folderPath
+        && audioRecoveryStatus
+        && audioRecoveryStatus.status !== 'success'
+        && (metadata.needsAudioRecovery || audioRecoveryStatus.status === 'failed')
+      );
+
+      if (audioRecoveryFailed) {
+        await indexedDBService.markMeetingNeedsAudioRecovery(
+          meetingId,
+          savedMeetingId,
+          audioRecoveryStatus?.message || 'Audio recovery did not produce an audio file'
+        );
+        throw new Error(audioRecoveryStatus?.message || 'Audio recovery failed; checkpoints were preserved');
+      }
+
+      // 7. Mark as saved only after any required audio recovery succeeds.
       await indexedDBService.markMeetingSaved(meetingId);
 
-
-      // 8. Clean up checkpoint files
-      if (folderPath) {
+      // 8. Clean up checkpoints only after a verified successful merge.
+      if (folderPath && audioRecoveryStatus?.status === 'success') {
         try {
           await invoke('cleanup_checkpoints', { meetingFolder: folderPath });
         } catch (error) {
-          // Non-fatal - don't fail recovery if cleanup fails
+          // The final audio exists, so leftover checkpoints are only a disk-space concern.
           console.warn('Checkpoint cleanup failed (non-fatal):', error);
         }
       }

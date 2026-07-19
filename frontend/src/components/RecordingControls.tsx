@@ -11,6 +11,15 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import Analytics from '@/lib/analytics';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 
+const isRecordingSaveFailure = (error: unknown): boolean => {
+  if (typeof error === 'object' && error !== null && 'kind' in error) {
+    return (error as { kind?: string }).kind === 'recording_save_failed';
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('recording_save_failed');
+};
+
 interface RecordingControlsProps {
   isRecording: boolean;
   barHeights: string[];
@@ -160,6 +169,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
       onRecordingStop(true);
     } catch (error) {
       console.error('Failed to stop recording:', error);
+      const recordingStoppedWithSaveFailure = isRecordingSaveFailure(error);
       if (error instanceof Error) {
         console.error('Error details:', {
           message: error.message,
@@ -177,7 +187,7 @@ export const RecordingControls: React.FC<RecordingControlsProps> = ({
         }
       }
       setIsProcessing(false);
-      onRecordingStop(false);
+      onRecordingStop(recordingStoppedWithSaveFailure);
     } finally {
       setIsStopping(false);
     }

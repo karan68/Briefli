@@ -13,6 +13,9 @@ export interface MeetingMetadata {
   transcriptCount: number;    // Number of transcript segments
   savedToSQLite: boolean;     // Flag: saved to backend DB
   folderPath?: string;        // Path to recording folder
+  sqliteMeetingId?: string;   // Existing backend meeting to reuse during audio-only recovery
+  needsAudioRecovery?: boolean;
+  audioSaveError?: string;
 }
 
 export interface StoredTranscript {
@@ -150,8 +153,10 @@ class IndexedDBService {
         const request = store.getAll();
         request.onsuccess = () => {
           const allMeetings = request.result as MeetingMetadata[];
-          // Filter for unsaved meetings (savedToSQLite = false)
-          const unsavedMeetings = allMeetings.filter(m => m.savedToSQLite === false);
+          // Include meetings whose transcript is saved but whose audio still needs recovery.
+          const unsavedMeetings = allMeetings.filter(
+            m => m.savedToSQLite === false || m.needsAudioRecovery === true
+          );
 
           // Sort by most recent first
           unsavedMeetings.sort((a, b) => b.lastUpdated - a.lastUpdated);
@@ -181,6 +186,8 @@ class IndexedDBService {
           const meeting = getRequest.result;
           if (meeting) {
             meeting.savedToSQLite = true;
+            meeting.needsAudioRecovery = false;
+            delete meeting.audioSaveError;
             meeting.lastUpdated = Date.now();
             const putRequest = store.put(meeting);
             putRequest.onsuccess = () => resolve();
@@ -193,6 +200,51 @@ class IndexedDBService {
       });
     } catch (error) {
       console.warn('Failed to mark meeting as saved:', error);
+    }
+  }
+
+  /**
+   * Keep a completed SQLite meeting discoverable until its checkpoint audio is recovered.
+   */
+  async markMeetingNeedsAudioRecovery(
+    meetingId: string,
+    sqliteMeetingId: string,
+    audioSaveError: string,
+    folderPath?: string
+  ): Promise<void> {
+    try {
+      if (!this.db) await this.init();
+
+      const transaction = this.db!.transaction(['meetings'], 'readwrite');
+      const store = transaction.objectStore('meetings');
+
+      await new Promise<void>((resolve, reject) => {
+        const getRequest = store.get(meetingId);
+        getRequest.onsuccess = () => {
+          const meeting = getRequest.result as MeetingMetadata | undefined;
+          if (!meeting) {
+            resolve();
+            return;
+          }
+
+          meeting.savedToSQLite = true;
+          meeting.sqliteMeetingId = sqliteMeetingId;
+          meeting.needsAudioRecovery = true;
+          meeting.audioSaveError = audioSaveError;
+          if (folderPath) {
+            meeting.folderPath = folderPath;
+          }
+          meeting.lastUpdated = Date.now();
+
+          const putRequest = store.put(meeting);
+          putRequest.onsuccess = () => resolve();
+          putRequest.onerror = () => reject(putRequest.error);
+        };
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    } catch (error) {
+      console.warn('Failed to retain meeting for audio recovery:', error);
+      throw error;
     }
   }
 

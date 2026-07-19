@@ -54,7 +54,7 @@ pub struct RecordingSaver {
     metadata: Option<MeetingMetadata>,
     transcript_segments: Arc<Mutex<Vec<TranscriptSegment>>>,
     chunk_receiver: Option<mpsc::UnboundedReceiver<AudioChunk>>,
-    is_saving: Arc<Mutex<bool>>,
+    accumulation_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl RecordingSaver {
@@ -66,7 +66,7 @@ impl RecordingSaver {
             metadata: None,
             transcript_segments: Arc::new(Mutex::new(Vec::new())),
             chunk_receiver: None,
-            is_saving: Arc::new(Mutex::new(false)),
+            accumulation_task: None,
         }
     }
 
@@ -188,54 +188,43 @@ impl RecordingSaver {
             }
         }
 
-        // Start accumulation task
-        let is_saving_clone = self.is_saving.clone();
+        // Start accumulation task.
+        //
+        // The worker processes every chunk it receives and stops only when the channel
+        // closes. On shutdown the pipeline is torn down first, which drops the recording
+        // sender and closes this channel, so awaiting the worker guarantees all queued
+        // audio is drained before finalization instead of racing a boolean flag.
         let incremental_saver_arc = self.incremental_saver.clone();
         let save_audio = auto_save;
 
         if let Some(mut receiver) = self.chunk_receiver.take() {
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 info!(
                     "Recording saver accumulation task started (save_audio: {})",
                     save_audio
                 );
 
                 while let Some(chunk) = receiver.recv().await {
-                    // Check if we should continue
-                    let should_continue = if let Ok(is_saving) = is_saving_clone.lock() {
-                        *is_saving
-                    } else {
-                        false
-                    };
-
-                    if !should_continue {
-                        break;
-                    }
-
                     // Only process audio chunks if auto_save is enabled
                     if save_audio {
                         // Add chunk to incremental saver
                         if let Some(saver_arc) = &incremental_saver_arc {
                             let mut saver_guard = saver_arc.lock().await;
-                            if let Err(e) = saver_guard.add_chunk(chunk) {
+                            if let Err(e) = saver_guard.add_chunk(chunk).await {
                                 error!("Failed to add chunk to incremental saver: {}", e);
                             }
                         } else {
                             error!("Incremental saver not available while accumulating");
                         }
-                    } else {
-                        // auto_save is false: discard audio chunk (no-op)
-                        // Transcription already happened in the pipeline before this point
                     }
+                    // else auto_save disabled: chunk is discarded (transcription already
+                    // happened earlier in the pipeline).
                 }
 
                 info!("Recording saver accumulation task ended");
             });
-        }
 
-        // Set saving flag
-        if let Ok(mut is_saving) = self.is_saving.lock() {
-            *is_saving = true;
+            self.accumulation_task = Some(handle);
         }
 
         sender
@@ -394,6 +383,39 @@ impl RecordingSaver {
         }
     }
 
+    /// Update the on-disk metadata to a completed state with the final duration.
+    ///
+    /// Writes `metadata.json` only; the in-memory copy is intentionally left untouched
+    /// because the saver is dropped right after stopping.
+    fn finalize_metadata_status(&self, recording_duration: Option<f64>) -> Result<(), String> {
+        if let (Some(folder), Some(mut metadata)) = (&self.meeting_folder, self.metadata.clone()) {
+            metadata.status = "completed".to_string();
+            metadata.completed_at = Some(chrono::Utc::now().to_rfc3339());
+
+            // Use actual recording duration from RecordingState (more accurate than transcript segments)
+            // Falls back to last transcript segment if duration not provided
+            metadata.duration_seconds = recording_duration.or_else(|| {
+                if let Ok(segments) = self.transcript_segments.lock() {
+                    segments.last().map(|seg| seg.audio_end_time)
+                } else {
+                    None
+                }
+            });
+
+            if let Err(e) = self.write_metadata(folder, &metadata) {
+                error!("❌ Failed to update metadata to completed: {}", e);
+                return Err(format!("Failed to update metadata: {}", e));
+            }
+
+            info!(
+                "✅ Metadata updated with duration: {:?}s",
+                metadata.duration_seconds
+            );
+        }
+
+        Ok(())
+    }
+
     /// Stop and save using incremental saving approach
     ///
     /// # Arguments
@@ -406,19 +428,30 @@ impl RecordingSaver {
     ) -> Result<Option<String>, String> {
         info!("Stopping recording saver");
 
-        // Stop accumulation
-        if let Ok(mut is_saving) = self.is_saving.lock() {
-            *is_saving = false;
+        // Drain the accumulation worker. The pipeline sender was already dropped during
+        // stream/pipeline shutdown, so the channel is closed; awaiting the worker
+        // guarantees every queued chunk was written before we finalize. This replaces a
+        // fragile fixed-duration sleep that could drop tail audio.
+        if let Some(task) = self.accumulation_task.take() {
+            match tokio::time::timeout(tokio::time::Duration::from_secs(30), task).await {
+                Ok(Ok(())) => info!("✅ Accumulation worker drained all queued audio chunks"),
+                Ok(Err(e)) => warn!("⚠️ Accumulation worker join error: {}", e),
+                Err(_) => {
+                    warn!("⏱️ Accumulation worker did not finish draining within 30s; continuing")
+                }
+            }
         }
-
-        // Give time for final chunks
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         // Check if incremental saver exists (indicates auto_save was enabled)
         let should_save_audio = self.incremental_saver.is_some();
 
         if !should_save_audio {
             info!("⚠️  No audio saver initialized (auto-save was disabled) - skipping audio finalization");
+            // Even without audio, finalize the on-disk metadata so transcript-only
+            // recordings are not left permanently in the "recording" state.
+            if let Err(e) = self.finalize_metadata_status(recording_duration) {
+                warn!("Transcript-only recording saved, but metadata finalization failed: {}", e);
+            }
             info!("✅ Transcripts and metadata already saved incrementally");
             return Ok(None);
         }
@@ -464,30 +497,7 @@ impl RecordingSaver {
         }
 
         // Update metadata to completed status with actual recording duration
-        if let (Some(folder), Some(mut metadata)) = (&self.meeting_folder, self.metadata.clone()) {
-            metadata.status = "completed".to_string();
-            metadata.completed_at = Some(chrono::Utc::now().to_rfc3339());
-
-            // Use actual recording duration from RecordingState (more accurate than transcript segments)
-            // Falls back to last transcript segment if duration not provided
-            metadata.duration_seconds = recording_duration.or_else(|| {
-                if let Ok(segments) = self.transcript_segments.lock() {
-                    segments.last().map(|seg| seg.audio_end_time)
-                } else {
-                    None
-                }
-            });
-
-            if let Err(e) = self.write_metadata(folder, &metadata) {
-                error!("❌ Failed to update metadata to completed: {}", e);
-                return Err(format!("Failed to update metadata: {}", e));
-            }
-
-            info!(
-                "✅ Metadata updated with duration: {:?}s",
-                metadata.duration_seconds
-            );
-        }
+        self.finalize_metadata_status(recording_duration)?;
 
         // Emit save event with audio and transcript paths
         let save_event = serde_json::json!({
@@ -506,6 +516,16 @@ impl RecordingSaver {
         // Clean up transcript segments
         if let Ok(mut segments) = self.transcript_segments.lock() {
             segments.clear();
+        }
+
+        if let Some(saver_arc) = &self.incremental_saver {
+            let saver = saver_arc.lock().await;
+            if let Err(e) = saver.cleanup_checkpoints() {
+                warn!(
+                    "Final recording saved, but checkpoint cleanup failed: {}",
+                    e
+                );
+            }
         }
 
         Ok(Some(final_audio_path.to_string_lossy().to_string()))

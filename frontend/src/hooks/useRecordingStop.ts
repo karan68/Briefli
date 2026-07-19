@@ -7,6 +7,8 @@ import { useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { useRecordingState, RecordingStatus } from '@/contexts/RecordingStateContext';
 import { storageService } from '@/services/storageService';
 import { transcriptService } from '@/services/transcriptService';
+import { indexedDBService } from '@/services/indexedDBService';
+import { RecordingStoppedPayload } from '@/services/recordingService';
 import Analytics from '@/lib/analytics';
 import {
   applyPinnedSummaryLanguageToMeeting,
@@ -57,6 +59,7 @@ export function useRecordingStop(
     clearTranscripts,
     meetingTitle,
     markMeetingAsSaved,
+    currentMeetingId,
   } = useTranscripts();
 
   const {
@@ -74,32 +77,42 @@ export function useRecordingStop(
 
   // Promise to track recording-stopped event data (fixes race condition with recording-stop-complete)
   const recordingStoppedDataRef = useRef<Promise<void> | null>(null);
+  const resolveRecordingStoppedDataRef = useRef<(() => void) | null>(null);
+  const recordingStoppedPayloadRef = useRef<RecordingStoppedPayload | null>(null);
 
   // Set up recording-stopped listener for meeting navigation
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
+    let unlistenStartedFn: (() => void) | undefined;
+
+    const prepareForRecordingStopped = () => {
+      recordingStoppedPayloadRef.current = null;
+      sessionStorage.removeItem('last_recording_folder_path');
+      sessionStorage.removeItem('last_recording_meeting_name');
+      recordingStoppedDataRef.current = new Promise<void>((resolve) => {
+        resolveRecordingStoppedDataRef.current = resolve;
+      });
+    };
+
+    prepareForRecordingStopped();
 
     const setupRecordingStoppedListener = async () => {
       try {
         console.log('Setting up recording-stopped listener for navigation...');
-        unlistenFn = await listen<{
-          message: string;
-          folder_path?: string;
-          meeting_name?: string;
-        }>('recording-stopped', async (event) => {
-          // Create promise that resolves when sessionStorage is set (prevents race condition)
-          recordingStoppedDataRef.current = (async () => {
-            const { folder_path, meeting_name } = event.payload;
+        unlistenStartedFn = await listen('recording-started', prepareForRecordingStopped);
+        unlistenFn = await listen<RecordingStoppedPayload>('recording-stopped', (event) => {
+          recordingStoppedPayloadRef.current = event.payload;
+          const { folder_path, meeting_name } = event.payload;
 
-            // Store folder_path and meeting_name for later use in handleRecordingStop
-            if (folder_path) {
-              sessionStorage.setItem('last_recording_folder_path', folder_path);
-            }
-            if (meeting_name) {
-              sessionStorage.setItem('last_recording_meeting_name', meeting_name);
-            }
-          })();
+          if (folder_path) {
+            sessionStorage.setItem('last_recording_folder_path', folder_path);
+          }
+          if (meeting_name) {
+            sessionStorage.setItem('last_recording_meeting_name', meeting_name);
+          }
 
+          resolveRecordingStoppedDataRef.current?.();
+          resolveRecordingStoppedDataRef.current = null;
         });
         console.log('Recording stopped listener setup complete');
       } catch (error) {
@@ -114,14 +127,21 @@ export function useRecordingStop(
       if (unlistenFn) {
         unlistenFn();
       }
+      if (unlistenStartedFn) {
+        unlistenStartedFn();
+      }
     };
   }, [router]);
 
   // Main recording stop handler
   const handleRecordingStop = useCallback(async (isCallApi: boolean) => {
-    if (recordingStoppedDataRef.current) {
-      await recordingStoppedDataRef.current;
+    if (!recordingStoppedPayloadRef.current && recordingStoppedDataRef.current) {
+      await Promise.race([
+        recordingStoppedDataRef.current,
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      ]);
     }
+    const recordingStoppedPayload = recordingStoppedPayloadRef.current;
 
     // Guard: prevent duplicate/concurrent stop calls
     if (stopInProgressRef.current) {
@@ -231,9 +251,11 @@ export function useRecordingStop(
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // Save to SQLite
-      // NOTE: enabled to save COMPLETE transcripts after frontend receives all updates
-      // This ensures user sees all transcripts streaming in before database save
-      if (isCallApi && transcriptionComplete == true) {
+      // Persist whenever we have transcripts, even if transcription completion was not
+      // observed (poll error / timeout / missed event). Skipping the save here would
+      // silently drop the meeting from normal history and rely solely on recovery.
+      const hasTranscripts = transcriptsRef.current.length > 0;
+      if (isCallApi && (transcriptionComplete || hasTranscripts)) {
 
         setStatus(RecordingStatus.SAVING, 'Saving meeting to database...');
 
@@ -293,8 +315,24 @@ export function useRecordingStop(
           console.log('   Transcripts:', freshTranscripts.length);
           console.log('   folder_path:', folderPath);
 
-          // Mark meeting as saved in IndexedDB (for recovery system)
+          const indexedDbMeetingId = currentMeetingId
+            || sessionStorage.getItem('indexeddb_current_meeting_id');
+
+          // Mark transcript persistence complete, then retain a lightweight repair record
+          // only when checkpoint audio still needs recovery.
           await markMeetingAsSaved();
+          if (
+            recordingStoppedPayload?.audio_save_error
+            && recordingStoppedPayload.recovery_available
+            && indexedDbMeetingId
+          ) {
+            await indexedDBService.markMeetingNeedsAudioRecovery(
+              indexedDbMeetingId,
+              meetingId,
+              recordingStoppedPayload.audio_save_error,
+              recordingStoppedPayload.folder_path
+            );
+          }
 
           // Clean up session storage
           sessionStorage.removeItem('last_recording_folder_path');
@@ -319,31 +357,58 @@ export function useRecordingStop(
             setCurrentMeeting({ id: meetingId, title: savedMeetingName || meetingTitle || 'New Meeting' });
           }
 
-          // Mark as completed
-          setStatus(RecordingStatus.COMPLETED);
+          const viewMeetingAction = {
+            label: 'View Meeting',
+            onClick: () => {
+              router.push(`/meeting-details?id=${meetingId}`);
+              Analytics.trackButtonClick('view_meeting_from_toast', 'recording_complete');
+            }
+          };
 
-          // Show success toast with navigation option
-          toast.success('Recording saved successfully!', {
-            description: `${freshTranscripts.length} transcript segments saved.`,
-            action: {
-              label: 'View Meeting',
-              onClick: () => {
-                router.push(`/meeting-details?id=${meetingId}`);
-                Analytics.trackButtonClick('view_meeting_from_toast', 'recording_complete');
+          if (recordingStoppedPayload?.audio_save_error) {
+            setStatus(RecordingStatus.ERROR, 'Audio could not be finalized');
+            toast.error(
+              recordingStoppedPayload.recovery_available
+                ? 'Audio save needs recovery'
+                : 'Audio could not be saved',
+              {
+                description: recordingStoppedPayload.recovery_available
+                  ? 'The transcript is saved. Audio checkpoints were preserved for recovery.'
+                  : recordingStoppedPayload.audio_file_available
+                    ? 'The audio file exists, but the meeting files could not be fully finalized.'
+                    : 'The transcript is saved, but no recoverable audio checkpoint was available.',
+                action: viewMeetingAction,
+                duration: 15000,
               }
-            },
-            duration: 10000,
-          });
+            );
+          } else if (!transcriptionComplete) {
+            setStatus(RecordingStatus.COMPLETED);
+            toast.warning('Meeting saved (transcription may be incomplete)', {
+              description: `${freshTranscripts.length} transcript segments saved. Some audio may still have been processing when the recording stopped.`,
+              action: viewMeetingAction,
+              duration: 12000,
+            });
+          } else {
+            setStatus(RecordingStatus.COMPLETED);
+            toast.success('Recording saved successfully!', {
+              description: `${freshTranscripts.length} transcript segments saved.`,
+              action: viewMeetingAction,
+              duration: 10000,
+            });
+          }
 
-          // Auto-navigate after a short delay with source parameter
+          // Successful saves navigate automatically. Save failures remain on the home
+          // screen so the retained checkpoint can appear in the recovery dialog.
           setTimeout(() => {
-            router.push(`/meeting-details?id=${meetingId}&source=recording`);
+            if (!recordingStoppedPayload?.audio_save_error) {
+              router.push(`/meeting-details?id=${meetingId}&source=recording`);
+              Analytics.trackPageView('meeting_details');
+            }
             clearTranscripts()
-            Analytics.trackPageView('meeting_details');
 
             // Reset to IDLE after navigation
             setStatus(RecordingStatus.IDLE);
-          }, 2000);
+          }, recordingStoppedPayload?.audio_save_error ? 2500 : 2000);
           // Track meeting completion analytics
           try {
             // Calculate meeting duration from transcript timestamps
@@ -419,6 +484,9 @@ export function useRecordingStop(
     } finally {
       // Always reset the guard flag when done
       stopInProgressRef.current = false;
+      recordingStoppedDataRef.current = null;
+      resolveRecordingStoppedDataRef.current = null;
+      recordingStoppedPayloadRef.current = null;
     }
   }, [
     setIsRecording,
@@ -429,6 +497,7 @@ export function useRecordingStop(
     clearTranscripts,
     meetingTitle,
     markMeetingAsSaved,
+    currentMeetingId,
     refetchMeetings,
     setCurrentMeeting,
     setMeetings,
