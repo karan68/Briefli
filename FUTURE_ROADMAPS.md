@@ -10,7 +10,7 @@
 > numbers / missing files. Verify against the real repo with absolute
 > `C:\dev\Briefli\…` paths or terminal `Select-String`.
 
-Last updated: 2026-07-17
+Last updated: 2026-07-18
 
 ---
 
@@ -31,12 +31,17 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 
 ---
 
-## 2. Verified performance findings
+## 2. Verified performance and recording reliability findings
 
 | Severity | Finding | Location | Notes |
 |----------|---------|----------|-------|
 | High | Transcript search is a full table scan | `src-tauri/src/database/repositories/transcript.rs` → `search_transcripts` uses `LOWER(t.transcript) LIKE '%q%'`, no index, `fetch_all` | Fix with SQLite **FTS5** — also unlocks the cross-meeting-memory moat. |
 | High | Audio buffer cloning in hot path | `src-tauri/src/audio/vad.rs` (`samples.to_vec()` + `drain().collect()` per chunk); `src-tauri/src/audio/incremental_saver.rs` (clones all buffered audio per checkpoint) | Allocation churn during long recordings. Prefer slices / reused buffers. |
+| P0 — fixed 2026-07-18 | Failed audio finalization was reported as success | `audio/recording_manager.rs`, `recording_commands.rs`, `incremental_saver.rs`; `hooks/useRecordingStop.ts` | Save/FFmpeg/disk failures now propagate as typed recoverable errors; checkpoints survive until the full save succeeds; FFmpeg is cancellable and publishes atomically; transcript persistence continues with an error toast and durable audio-recovery record. |
+| High — fixed 2026-07-18 | Transcription timeout detached the worker | `audio/recording_commands.rs` shutdown wait | Timed-out transcription worker is now `abort()`-ed and joined before model unload / finalization, so it can no longer run detached and race the save. |
+| High — fixed 2026-07-18 | Frontend could skip SQLite save after transcription timeout | `hooks/useRecordingStop.ts` save gate | Save now proceeds whenever transcripts exist (`transcriptionComplete \|\| hasTranscripts`); a distinct warning toast flags possibly-incomplete transcription instead of silently dropping the meeting. |
+| High — fixed 2026-07-18 | Stop could drop tail audio (fixed sleep) | `audio/recording_saver.rs` accumulation worker | Worker is now a stored `JoinHandle`; stop drains by awaiting worker after the pipeline closes the channel (30s cap), replacing the `is_saving` flag + 200ms sleep. Transcript-only recordings also finalize `metadata.json` status. |
+| Medium — fixed 2026-07-18 | FFmpeg concat paths not escaped | `audio/incremental_saver.rs` | `ffmpeg_concat_escape` escapes single quotes at both concat call sites, so meeting names with apostrophes no longer fail finalize/recovery (unit-tested). |
 | Low (corrected) | `console.log` on every render | `components/TranscriptView.tsx` ~L111 | **Dead code** — `TranscriptView` is never rendered (no `<TranscriptView` JSX; live UI uses `VirtualizedTranscriptView`). Trivial cleanup only. |
 | Low (corrected) | Summary status polling `setInterval` 5s | `components/Sidebar/SidebarProvider.tsx` | Only runs *during summary generation*, clears on completion. Minor. |
 

@@ -99,8 +99,17 @@ fn toggle_recording_handler<R: Runtime>(app: &AppHandle<R>) {
                 }
                 Err(e) => {
                     log::error!("Tray toggle: Failed to stop recording: {}", e);
-                    // Revert tray state on error
-                    update_tray_menu_async(&app_clone).await;
+                    if e.recording_stopped() {
+                        if let Err(emit_error) = app_clone.emit("recording-stop-complete", true) {
+                            log::error!(
+                                "Tray toggle: Failed to emit post-processing event after save failure: {}",
+                                emit_error
+                            );
+                        }
+                    } else {
+                        // Revert tray state only when audio capture itself could not stop
+                        update_tray_menu_async(&app_clone).await;
+                    }
                 }
             }
         } else {
@@ -195,8 +204,17 @@ fn stop_recording_handler<R: Runtime>(app: &AppHandle<R>) {
             }
             Err(e) => {
                 log::error!("Tray: Failed to stop recording: {}", e);
-                // Revert tray state on error
-                update_tray_menu_async(&app_clone).await;
+                if e.recording_stopped() {
+                    if let Err(emit_error) = app_clone.emit("recording-stop-complete", true) {
+                        log::error!(
+                            "Tray: Failed to emit post-processing event after save failure: {}",
+                            emit_error
+                        );
+                    }
+                } else {
+                    // Revert tray state only when audio capture itself could not stop
+                    update_tray_menu_async(&app_clone).await;
+                }
             }
         }
     });
