@@ -50,6 +50,7 @@ pub mod onboarding;
 pub mod openai;
 pub mod openrouter;
 pub mod parakeet_engine;
+pub mod qa;
 pub mod state;
 pub mod summary;
 pub mod tray;
@@ -699,6 +700,8 @@ pub fn run() {
             summary::commands::api_save_meeting_detected_summary_language,
             summary::commands::api_detect_transcript_summary_language,
             summary::commands::api_cancel_summary,
+            // Meeting Q&A commands
+            qa::commands::api_ask_meeting_question,
             // Template commands
             summary::template_commands::api_list_templates,
             summary::template_commands::api_get_template_details,

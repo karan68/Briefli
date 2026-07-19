@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { TranscriptPanel } from '@/components/MeetingDetails/TranscriptPanel';
 import { SummaryPanel } from '@/components/MeetingDetails/SummaryPanel';
+import { MeetingQA } from '@/components/MeetingDetails/MeetingQA';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 
 // Custom hooks
@@ -226,6 +227,13 @@ export default function PageContent({
           onTemplateSelect={templates.handleTemplateSelection}
           isModelConfigLoading={false}
           onOpenModelSettings={handleRegisterModalOpen}
+        />
+      </div>
+
+      <div className="fixed bottom-6 right-6 z-40">
+        <MeetingQA
+          meetingId={meeting.id}
+          hasTranscripts={(meetingData.transcripts?.length ?? 0) > 0}
         />
       </div>
     </motion.div>
