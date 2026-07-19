@@ -10,7 +10,7 @@
 > numbers / missing files. Verify against the real repo with absolute
 > `C:\dev\Briefli\…` paths or terminal `Select-String`.
 
-Last updated: 2026-07-18
+Last updated: 2026-07-19
 
 ---
 
@@ -35,7 +35,7 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 
 | Severity | Finding | Location | Notes |
 |----------|---------|----------|-------|
-| High | Transcript search is a full table scan | `src-tauri/src/database/repositories/transcript.rs` → `search_transcripts` uses `LOWER(t.transcript) LIKE '%q%'`, no index, `fetch_all` | Fix with SQLite **FTS5** — also unlocks the cross-meeting-memory moat. |
+| High — fixed 2026-07-19 | Transcript search loaded every stored segment into memory on each query (a full scan). | `src-tauri/src/database/repositories/transcript.rs` → `search_transcripts` | Now backed by a SQLite **FTS5** index (`transcripts_fts`, migration `20260719000000_add_transcripts_fts.sql`). The FTS index narrows to the meetings that contain every term before the existing scoring/snippet logic runs; matching upgraded from raw substring to token/prefix. Frontend contract (`api_search_transcripts` → `TranscriptSearchResult[]`) unchanged. 21 new Rust tests; also the FTS5 retrieval foundation for #266. |
 | High | Audio buffer cloning in hot path | `src-tauri/src/audio/vad.rs` (`samples.to_vec()` + `drain().collect()` per chunk); `src-tauri/src/audio/incremental_saver.rs` (clones all buffered audio per checkpoint) | Allocation churn during long recordings. Prefer slices / reused buffers. |
 | P0 — fixed 2026-07-18 | Failed audio finalization was reported as success | `audio/recording_manager.rs`, `recording_commands.rs`, `incremental_saver.rs`; `hooks/useRecordingStop.ts` | Save/FFmpeg/disk failures now propagate as typed recoverable errors; checkpoints survive until the full save succeeds; FFmpeg is cancellable and publishes atomically; transcript persistence continues with an error toast and durable audio-recovery record. |
 | High — fixed 2026-07-18 | Transcription timeout detached the worker | `audio/recording_commands.rs` shutdown wait | Timed-out transcription worker is now `abort()`-ed and joined before model unload / finalization, so it can no longer run detached and race the save. |
@@ -59,6 +59,8 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
    custom-context plumbing; add an override/edit path.
 3. **#266 — Ask questions about a meeting** (large, strategic). FTS5 over transcripts
    (also fixes perf item #1) + local-LLM Q&A over retrieved chunks. The differentiator.
+   **FTS5 retrieval foundation shipped 2026-07-19** (see §2, perf item now fixed);
+   the remaining work is the local-LLM Q&A layer over FTS-retrieved segments.
 
 Deprioritized: #257(3) ElevenLabs cloud STT, #571 custom HF models — both cut against
 the privacy-first / "transcription is commodity" positioning.
@@ -298,6 +300,17 @@ new uses a slugified id. Deletion is allowed only for custom files.
 ---
 
 ## 6. Changelog
+
+- 2026-07-19 — #266 foundation: added a SQLite **FTS5** index over transcript segments
+  (`transcripts_fts` + sync triggers, migration `20260719000000_add_transcripts_fts.sql`)
+  and reworked `search_transcripts` to narrow candidate meetings through the index before
+  the (unchanged) scoring/snippet logic, with a full-scan fallback for punctuation-only
+  queries. Matching is now token/prefix based (intentional precision improvement) and FTS
+  operator characters in queries are quoted/escaped (injection-safe). The frontend contract
+  (`api_search_transcripts` → `TranscriptSearchResult[]`, Sidebar search) is unchanged. Added
+  21 Rust tests (parsing, matching, ranking, snippets, UTF-8 safety, adversarial queries,
+  index sync on insert/update/delete); 38/38 database-module tests pass, transcript.rs
+  rustfmt-clean. Branch `feat/fts5-transcript-search` off `devtest`.
 
 - 2026-07-17 — #257(2) follow-up: added JSON-level editing (Form/JSON toggle, Import JSON,
   Copy JSON) and hardened edge cases (collision-free ids, section reorder, discard
