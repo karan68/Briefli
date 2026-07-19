@@ -10,7 +10,7 @@
 > numbers / missing files. Verify against the real repo with absolute
 > `C:\dev\Briefli\…` paths or terminal `Select-String`.
 
-Last updated: 2026-07-19
+Last updated: 2026-07-20
 
 ---
 
@@ -25,7 +25,7 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 | #257 (2) | Editable summarization system prompt | ✅ **Done** — custom template editor (§5) | Settings → Summary now has a template editor (create/edit/duplicate/delete) writing same-id custom overrides; fixed preamble + multi-language contract untouched. |
 | #257 (3) | ElevenLabs / cloud transcription | ❌ Not done | All local (Whisper/Parakeet). Conflicts with privacy-first thesis → deprioritized. |
 | #379 | "Performance/GPU" settings menu | ⚠️ Docs mismatch | Blog references a `Settings → Performance` menu that does not exist. Low-priority UX/docs item. |
-| #266 | Ask questions about a meeting (chat / RAG) | ❌ Not done | No chat/Q&A/RAG over transcripts. **Strategic** — aligns with cross-meeting-memory moat. |
+| #266 | Ask questions about a meeting (chat / RAG) | ✅ **Done** — single-meeting Q&A (§6) | `qa/` module: transcript retrieval → grounded, injection-guarded prompt → configured local/cloud LLM (`api_ask_meeting_question`); UI `components/MeetingDetails/MeetingQA.tsx`. Answers cite the transcript segments used. |
 | #597 | Delete downloaded models | ✅ **Done** — incl. confirmation (§4) | Delete wired end-to-end for all 3 engines; confirmation dialog added 2026-07-17. |
 | #571 | Custom models from Hugging Face | ❌ Not done | Hardcoded catalogs (Whisper/Parakeet/summary). Security + effort heavy → skip for now. |
 
@@ -57,10 +57,10 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 1. **#597 — Confirmation dialog for model deletion** (small, safe). *Active plan in §4.*
 2. **#257 (2) — Editable summary system prompt** (medium). We already have template +
    custom-context plumbing; add an override/edit path.
-3. **#266 — Ask questions about a meeting** (large, strategic). FTS5 over transcripts
-   (also fixes perf item #1) + local-LLM Q&A over retrieved chunks. The differentiator.
-   **FTS5 retrieval foundation shipped 2026-07-19** (see §2, perf item now fixed);
-   the remaining work is the local-LLM Q&A layer over FTS-retrieved segments.
+3. **#266 — Ask questions about a meeting** — ✅ **Done 2026-07-20** (§6). Single-meeting
+   Q&A over the transcript, answered by the configured model with cited sources. The
+   FTS5 retrieval foundation (§2) also fixed the transcript-search perf item. Next
+   evolution: cross-meeting RAG (the broader moat) + citation click-to-jump.
 
 Deprioritized: #257(3) ElevenLabs cloud STT, #571 custom HF models — both cut against
 the privacy-first / "transcription is commodity" positioning.
@@ -299,8 +299,57 @@ new uses a slugified id. Deletion is allowed only for custom files.
 
 ---
 
-## 6. Changelog
+## 6. Implemented — #266: Meeting Q&A (ask questions about a meeting)
 
+> **Status: ✅ Implemented 2026-07-20.** Ask a question about a single meeting and get
+> an answer grounded only in that meeting's transcript, produced by the same model the
+> user already configured for summaries. Verified against `C:\dev\Briefli`.
+
+### 6.1 Backend — `src-tauri/src/qa/`
+
+- **`retrieval.rs`** (pure, no I/O — 15 unit tests): `select_excerpts` chooses the
+  grounding segments — the whole transcript when it fits a ~12k-char budget, otherwise
+  segments relevant to the question (word overlap) first, with leftover budget filled
+  chronologically, then re-sorted in order and numbered for citation. `build_system_prompt`
+  / `build_user_prompt` produce a grounded, citation-formatted prompt with a
+  prompt-injection guard (transcript text is treated as untrusted). `extract_citations`
+  maps `[n]` / `[n][m]` / `[n, m]` back to segments (in-range, deduped, sorted).
+- **`commands.rs`**: `api_ask_meeting_question(meeting_id, question)` loads the meeting via
+  `MeetingsRepository::get_meeting`, retrieves excerpts, resolves provider/model/key/endpoint
+  exactly like the summary pipeline (`SettingsRepository` — OpenAI/Claude/Groq/Ollama/
+  OpenRouter/BuiltInAI/CustomOpenAI), calls the shared `summary::llm_client::generate_summary`,
+  and returns `{ answer, sources[], provider, model, excerptsUsed }` where `sources` are the
+  cited transcript segments (id + timestamp + text). Registered in `lib.rs`.
+- The summary pipeline itself is untouched; Q&A only re-uses its config resolution and client.
+
+### 6.2 Frontend
+
+- **`components/MeetingDetails/MeetingQA.tsx`** — a slide-over (`Sheet`) triggered by an
+  “Ask this meeting” floating control, wired in `app/meeting-details/page-content.tsx`
+  (disabled until transcripts exist). Shows the answer plus the cited source excerpts with
+  timestamps, and which provider/model answered. No new deps (reuses `Sheet`/`Button`/`Textarea`).
+
+### 6.3 Scope / non-goals (for now)
+
+- Single meeting only — cross-meeting RAG (the broader moat) is the next step.
+- No embeddings — keyword/overlap retrieval keeps it fully local and privacy-first.
+- Citation click-to-jump into the transcript timeline is a follow-up.
+
+### 6.4 Verification
+
+- 15 `qa::retrieval` tests + 21 `transcripts_fts` tests pass; `tsc --noEmit` exit 0;
+  66/66 Bun tests; new Rust files rustfmt-clean.
+
+---
+
+## 7. Changelog
+
+- 2026-07-20 — #266 Q&A layer: new `qa/` backend module (`api_ask_meeting_question`) —
+  deterministic transcript retrieval + grounded, injection-guarded prompt + citation
+  mapping, answered by the configured local/cloud model through the shared LLM client;
+  frontend `MeetingQA.tsx` slide-over in meeting details. 15 new Rust tests
+  (retrieval/prompt/citation), `tsc` clean, 66/66 Bun tests. Re-uses the summary
+  pipeline's provider/model/key resolution; summary pipeline untouched.
 - 2026-07-19 — #266 foundation: added a SQLite **FTS5** index over transcript segments
   (`transcripts_fts` + sync triggers, migration `20260719000000_add_transcripts_fts.sql`)
   and reworked `search_transcripts` to narrow candidate meetings through the index before
