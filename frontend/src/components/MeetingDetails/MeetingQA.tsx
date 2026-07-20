@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { Sparkles, Loader2, Send } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import {
   Sheet,
@@ -121,8 +123,8 @@ export function MeetingQA({ meetingId, hasTranscripts }: MeetingQAProps) {
 
         {result && (
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-              {result.answer}
+            <div className="prose prose-sm max-w-none text-sm leading-relaxed text-foreground prose-p:my-2 prose-strong:text-foreground prose-headings:text-foreground">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.answer}</ReactMarkdown>
             </div>
 
             {result.sources.length > 0 && (
