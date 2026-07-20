@@ -60,7 +60,8 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 3. **#266 — Ask questions about a meeting** — ✅ **Done 2026-07-20** (§6). Single-meeting
    Q&A over the transcript, answered by the configured model with cited sources. The
    FTS5 retrieval foundation (§2) also fixed the transcript-search perf item. Next
-   evolution: cross-meeting RAG (the broader moat) + citation click-to-jump.
+   evolution: **citation click-to-jump ✅ done 2026-07-20**. Cross-meeting RAG intentionally
+   deprioritized (meetings lack pre-defined groups; would be scoped via memory spaces/folders if pursued).
 
 Deprioritized: #257(3) ElevenLabs cloud STT, #571 custom HF models — both cut against
 the privacy-first / "transcription is commodity" positioning.
@@ -333,7 +334,9 @@ new uses a slugified id. Deletion is allowed only for custom files.
 
 - Single meeting only — cross-meeting RAG (the broader moat) is the next step.
 - No embeddings — keyword/overlap retrieval keeps it fully local and privacy-first.
-- Citation click-to-jump into the transcript timeline is a follow-up.
+- Citation click-to-jump: ✅ **done 2026-07-20** — clicking a source closes the drawer, scrolls
+  the transcript to that segment and highlights it (`briefli:jump-to-segment` → `TranscriptPanel`,
+  reusing the timeline/search scroll path).
 
 ### 6.4 Verification
 
@@ -344,6 +347,13 @@ new uses a slugified id. Deletion is allowed only for custom files.
 
 ## 7. Changelog
 
+- 2026-07-20 — Q&A citation click-to-jump: answer sources are clickable — clicking closes the
+  drawer and dispatches a `briefli:jump-to-segment` window event; `TranscriptPanel` reuses its
+  existing scroll-to + highlight path. Also removed a dead per-render `console.log` in the
+  unrendered `TranscriptView`. tsc clean, 66/66 Bun tests. **Release-readiness checks (verified,
+  no change needed):** the app icon matches the Briefli mark (`icon.png` == `briefli-mark.svg`),
+  and `tauri-plugin-fs` is already aligned with the JS plugin — both resolve to 2.5.1 (the
+  `"2.4.0"` in Cargo.toml is a caret floor, not the resolved version).
 - 2026-07-20 — Perf: removed audio buffer cloning in the VAD hot path
   (`audio/vad.rs` `process_audio`/`flush`) — no throwaway input copy at 16kHz, per-chunk
   slice processing over a moved-out buffer instead of `drain(..).collect()`, and `mem::take`
