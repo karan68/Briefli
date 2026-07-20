@@ -87,26 +87,39 @@ impl ContinuousVadProcessor {
     /// Process incoming audio samples and return any complete speech segments
     /// Handles resampling from input sample rate to 16kHz for VAD processing
     pub fn process_audio(&mut self, samples: &[f32]) -> Result<Vec<SpeechSegment>> {
-        // Resample to 16kHz if needed
-        let resampled_audio = if self.sample_rate == 16000 {
-            samples.to_vec()
+        // Append incoming audio to the working buffer, resampling to 16kHz only
+        // when needed. When the input is already 16kHz we extend directly from
+        // the slice instead of copying it into a throwaway Vec first.
+        if self.sample_rate == 16000 {
+            self.buffer.extend_from_slice(samples);
         } else {
-            self.resample_to_16k(samples)?
-        };
+            let resampled_audio = self.resample_to_16k(samples)?;
+            self.buffer.extend_from_slice(&resampled_audio);
+        }
 
-        self.buffer.extend_from_slice(&resampled_audio);
         let mut completed_segments = Vec::new();
 
-        // Process complete 30ms chunks (480 samples at 16kHz)
-        while self.buffer.len() >= self.chunk_size {
-            let chunk: Vec<f32> = self.buffer.drain(..self.chunk_size).collect();
-            self.process_chunk(&chunk)?;
+        // Process complete 30ms chunks (480 samples at 16kHz). The buffer is
+        // moved into a local so each chunk can be passed to `process_chunk`
+        // (which borrows `&mut self`) as a slice, without allocating a fresh Vec
+        // per chunk. Only the consumed prefix is removed afterwards, and the
+        // buffer's allocation is returned to `self` for reuse on the next call.
+        let mut buffer = std::mem::take(&mut self.buffer);
+        let mut consumed = 0;
+        while buffer.len() - consumed >= self.chunk_size {
+            let chunk = &buffer[consumed..consumed + self.chunk_size];
+            self.process_chunk(chunk)?;
+            consumed += self.chunk_size;
 
             // Extract any completed speech segments
             while let Some(segment) = self.speech_segments.pop_front() {
                 completed_segments.push(segment);
             }
         }
+        if consumed > 0 {
+            buffer.drain(..consumed);
+        }
+        self.buffer = buffer;
 
         Ok(completed_segments)
     }
@@ -175,11 +188,9 @@ impl ContinuousVadProcessor {
 
         // Process any remaining buffered audio
         if !self.buffer.is_empty() {
-            let remaining = self.buffer.clone();
-            self.buffer.clear();
-
-            // Pad to chunk size if needed
-            let mut padded_chunk = remaining;
+            // Move the buffer out (leaving `self.buffer` empty, as the previous
+            // clear() did) so it can be padded and processed without a clone.
+            let mut padded_chunk = std::mem::take(&mut self.buffer);
             if padded_chunk.len() < self.chunk_size {
                 padded_chunk.resize(self.chunk_size, 0.0);
             }
@@ -696,6 +707,67 @@ mod tests {
                 "Segment {} too short: {:.0}ms",
                 i,
                 duration_ms
+            );
+        }
+    }
+
+    #[test]
+    fn test_vad_incremental_feeding_matches_single_call() {
+        // The buffered chunk handling must yield identical segments whether audio
+        // arrives in one call or in many small, chunk-unaligned increments. This
+        // guards the zero-copy buffer processing in `process_audio` (which moves
+        // the buffer out, processes slices, then drains only the consumed prefix).
+        let audio = generate_test_audio_with_speech(30.0, 16000);
+
+        // Reference: feed everything at once.
+        let mut single =
+            ContinuousVadProcessor::new(16000, 2000).expect("Failed to create processor");
+        let mut single_segments = single
+            .process_audio(&audio)
+            .expect("single processing failed");
+        single_segments.extend(single.flush().expect("single flush failed"));
+
+        // Incremental: feed in deliberately chunk-unaligned 97-sample increments.
+        let mut incremental =
+            ContinuousVadProcessor::new(16000, 2000).expect("Failed to create processor");
+        let mut incremental_segments = Vec::new();
+        for chunk in audio.chunks(97) {
+            incremental_segments.extend(
+                incremental
+                    .process_audio(chunk)
+                    .expect("incremental processing failed"),
+            );
+        }
+        incremental_segments.extend(incremental.flush().expect("incremental flush failed"));
+
+        assert_eq!(
+            single_segments.len(),
+            incremental_segments.len(),
+            "segment count differs between single ({}) and incremental ({}) feeding",
+            single_segments.len(),
+            incremental_segments.len()
+        );
+        for (i, (a, b)) in single_segments
+            .iter()
+            .zip(incremental_segments.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                a.samples.len(),
+                b.samples.len(),
+                "segment {i} sample length differs"
+            );
+            assert!(
+                (a.start_timestamp_ms - b.start_timestamp_ms).abs() < 1e-6,
+                "segment {i} start timestamp differs: {} vs {}",
+                a.start_timestamp_ms,
+                b.start_timestamp_ms
+            );
+            assert!(
+                (a.end_timestamp_ms - b.end_timestamp_ms).abs() < 1e-6,
+                "segment {i} end timestamp differs: {} vs {}",
+                a.end_timestamp_ms,
+                b.end_timestamp_ms
             );
         }
     }
