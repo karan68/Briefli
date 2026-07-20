@@ -77,6 +77,16 @@ export function MeetingQA({ meetingId, hasTranscripts }: MeetingQAProps) {
     }
   };
 
+  // Close the drawer (its overlay would otherwise dim the transcript) and ask
+  // the transcript panel to scroll to + highlight the cited segment.
+  const jumpToSource = (segmentId: string) => {
+    if (!segmentId) return;
+    setOpen(false);
+    window.dispatchEvent(
+      new CustomEvent('briefli:jump-to-segment', { detail: { segmentId } }),
+    );
+  };
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -133,14 +143,17 @@ export function MeetingQA({ meetingId, hasTranscripts }: MeetingQAProps) {
                   Sources
                 </div>
                 {result.sources.map((source) => (
-                  <div
+                  <button
                     key={source.number}
-                    className="rounded-md border border-briefli-line bg-briefli-paper/50 p-2 text-xs text-muted-foreground"
+                    type="button"
+                    onClick={() => jumpToSource(source.segmentId)}
+                    title="Jump to this moment in the transcript"
+                    className="w-full rounded-md border border-briefli-line bg-briefli-paper/50 p-2 text-left text-xs text-muted-foreground transition-colors hover:bg-briefli-paper hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <span className="mr-1 font-semibold text-foreground">[{source.number}]</span>
                     {source.timestamp && <span className="mr-1">({source.timestamp})</span>}
                     {source.text}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}

@@ -187,6 +187,33 @@ export function TranscriptPanel({
     }
   }, [targetSegmentId, convertedSegments, isRecording, audioPath, audio.duration]);
 
+  // Jump to a cited transcript segment when the user clicks a source in the
+  // meeting Q&A drawer. Reuses the same scroll + highlight (+ optional seek)
+  // path as timeline / search navigation. `scrollToSegment` is a no-op when the
+  // segment is not currently loaded, matching existing behaviour.
+  const jumpToSegmentById = useCallback(
+    (segmentId: string) => {
+      if (isRecording) return;
+      const segment = convertedSegments.find((item) => item.id === segmentId);
+      if (!segment) return;
+      setActiveSegmentId(segmentId);
+      transcriptViewRef.current?.scrollToSegment(segmentId);
+      if (audioPath && audio.duration > 0 && typeof segment.timestamp === 'number') {
+        audio.seek(segment.timestamp);
+      }
+    },
+    [convertedSegments, isRecording, audioPath, audio],
+  );
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ segmentId?: string }>).detail;
+      if (detail?.segmentId) jumpToSegmentById(detail.segmentId);
+    };
+    window.addEventListener('briefli:jump-to-segment', handler);
+    return () => window.removeEventListener('briefli:jump-to-segment', handler);
+  }, [jumpToSegmentById]);
+
   const handleToggleTimeline = useCallback(() => {
     setIsTimelineOpen((open) => !open);
   }, []);
