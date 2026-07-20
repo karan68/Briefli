@@ -488,7 +488,10 @@ mod tests {
     #[test]
     fn concat_escape_handles_single_quotes() {
         // A path with no quotes is unchanged.
-        assert_eq!(ffmpeg_concat_escape("C:/meetings/audio.mp4"), "C:/meetings/audio.mp4");
+        assert_eq!(
+            ffmpeg_concat_escape("C:/meetings/audio.mp4"),
+            "C:/meetings/audio.mp4"
+        );
         // A single quote is escaped as '\'' so the concat line stays valid.
         assert_eq!(
             ffmpeg_concat_escape("C:/meetings/Karan's Review/audio.mp4"),

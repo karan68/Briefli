@@ -450,7 +450,10 @@ impl RecordingSaver {
             // Even without audio, finalize the on-disk metadata so transcript-only
             // recordings are not left permanently in the "recording" state.
             if let Err(e) = self.finalize_metadata_status(recording_duration) {
-                warn!("Transcript-only recording saved, but metadata finalization failed: {}", e);
+                warn!(
+                    "Transcript-only recording saved, but metadata finalization failed: {}",
+                    e
+                );
             }
             info!("✅ Transcripts and metadata already saved incrementally");
             return Ok(None);
