@@ -36,7 +36,7 @@ Checked directly against `C:\dev\Briefli` on 2026-07-17.
 | Severity | Finding | Location | Notes |
 |----------|---------|----------|-------|
 | High — fixed 2026-07-19 | Transcript search loaded every stored segment into memory on each query (a full scan). | `src-tauri/src/database/repositories/transcript.rs` → `search_transcripts` | Now backed by a SQLite **FTS5** index (`transcripts_fts`, migration `20260719000000_add_transcripts_fts.sql`). The FTS index narrows to the meetings that contain every term before the existing scoring/snippet logic runs; matching upgraded from raw substring to token/prefix. Frontend contract (`api_search_transcripts` → `TranscriptSearchResult[]`) unchanged. 21 new Rust tests; also the FTS5 retrieval foundation for #266. |
-| High | Audio buffer cloning in hot path | `src-tauri/src/audio/vad.rs` (`samples.to_vec()` + `drain().collect()` per chunk); `src-tauri/src/audio/incremental_saver.rs` (clones all buffered audio per checkpoint) | Allocation churn during long recordings. Prefer slices / reused buffers. |
+| High — fixed 2026-07-20 | Audio buffer cloning in the VAD hot path | `src-tauri/src/audio/vad.rs` (`process_audio`, `flush`) | `process_audio` no longer copies the input into a throwaway Vec when it is already 16kHz, and now processes 480-sample chunks as **slices of the moved-out buffer** (draining only the consumed prefix and reusing the allocation) instead of `drain(..).collect()` per chunk; `flush` uses `mem::take` instead of `clone()`. Behaviour verified identical via a single-vs-incremental-feed equivalence test (6 vad tests pass). **`incremental_saver.rs` was evaluated and intentionally left as-is**: `add_chunk` already *moves* the chunk data (no per-chunk clone), and the per-checkpoint concat runs only once/30s and must produce a contiguous buffer for the encoder — optimising it would be churn for no real gain. |
 | P0 — fixed 2026-07-18 | Failed audio finalization was reported as success | `audio/recording_manager.rs`, `recording_commands.rs`, `incremental_saver.rs`; `hooks/useRecordingStop.ts` | Save/FFmpeg/disk failures now propagate as typed recoverable errors; checkpoints survive until the full save succeeds; FFmpeg is cancellable and publishes atomically; transcript persistence continues with an error toast and durable audio-recovery record. |
 | High — fixed 2026-07-18 | Transcription timeout detached the worker | `audio/recording_commands.rs` shutdown wait | Timed-out transcription worker is now `abort()`-ed and joined before model unload / finalization, so it can no longer run detached and race the save. |
 | High — fixed 2026-07-18 | Frontend could skip SQLite save after transcription timeout | `hooks/useRecordingStop.ts` save gate | Save now proceeds whenever transcripts exist (`transcriptionComplete \|\| hasTranscripts`); a distinct warning toast flags possibly-incomplete transcription instead of silently dropping the meeting. |
@@ -344,6 +344,13 @@ new uses a slugified id. Deletion is allowed only for custom files.
 
 ## 7. Changelog
 
+- 2026-07-20 — Perf: removed audio buffer cloning in the VAD hot path
+  (`audio/vad.rs` `process_audio`/`flush`) — no throwaway input copy at 16kHz, per-chunk
+  slice processing over a moved-out buffer instead of `drain(..).collect()`, and `mem::take`
+  instead of `clone()` on flush. Added an equivalence test (single vs chunk-unaligned
+  incremental feeding); 6/6 vad tests pass, rustfmt-clean. `incremental_saver.rs` evaluated
+  and intentionally left unchanged (already moves chunk data; per-checkpoint concat is once/30s
+  and inherent to encoding).
 - 2026-07-20 — #266 Q&A layer: new `qa/` backend module (`api_ask_meeting_question`) —
   deterministic transcript retrieval + grounded, injection-guarded prompt + citation
   mapping, answered by the configured local/cloud model through the shared LLM client;
